@@ -1,7 +1,7 @@
 import * as PIXI from 'pixi.js';
-import type { Region, Country, BattleEffect, BorderFront } from '../types';
+import type { Region, Country, BattleEffect, BorderFront, TradeRoute } from '../types';
 import { hslToHex, TERRAIN_COLORS } from '../utils/colors';
-import { ArmyOverlay, BattleEffectSystem, BorderFrontOverlay, Minimap } from './animation';
+import { ArmyOverlay, BattleEffectSystem, BorderFrontOverlay, TradeRouteOverlay, Minimap } from './animation';
 
 const TERRAIN_PATTERNS: Record<string, (gfx: PIXI.Graphics, cx: number, cy: number) => void> = {
   mountains: (gfx, cx, cy) => {
@@ -58,6 +58,7 @@ export class MapRenderer {
   private armyOverlay: ArmyOverlay;
   private battleEffects: BattleEffectSystem;
   private borderFrontOverlay: BorderFrontOverlay;
+  private tradeRouteOverlay: TradeRouteOverlay;
   private minimap: Minimap;
   private animFrameId: number | null = null;
 
@@ -87,6 +88,7 @@ export class MapRenderer {
     this.armyOverlay = new ArmyOverlay(this.worldContainer);
     this.battleEffects = new BattleEffectSystem(this.worldContainer);
     this.borderFrontOverlay = new BorderFrontOverlay(this.worldContainer);
+    this.tradeRouteOverlay = new TradeRouteOverlay(this.worldContainer);
     this.minimap = new Minimap(this.uiContainer, width, height, 130);
     this.minimap.setPosition(width - 140, 10);
 
@@ -364,9 +366,10 @@ export class MapRenderer {
   }
 
   /** Update army positions and effects during simulation */
-  updateSimulation(countries: Country[], regions: Region[], borderFronts: BorderFront[] = []): void {
+  updateSimulation(countries: Country[], regions: Region[], borderFronts: BorderFront[] = [], tradeRoutes: TradeRoute[] = []): void {
     this.armyOverlay.update(countries, regions, borderFronts);
     this.borderFrontOverlay.update(borderFronts, regions, countries);
+    this.tradeRouteOverlay.update(tradeRoutes, regions);
     this.minimap.updateRegions(regions, countries);
   }
 
@@ -402,6 +405,7 @@ export class MapRenderer {
     this.armyOverlay.destroy();
     this.battleEffects.destroy();
     this.borderFrontOverlay.destroy();
+    this.tradeRouteOverlay.destroy();
     this.minimap.destroy();
     this.app.destroy(true);
   }

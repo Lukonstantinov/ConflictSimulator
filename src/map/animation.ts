@@ -1,6 +1,14 @@
 import * as PIXI from 'pixi.js';
-import type { Army, BorderFront, Country, Region, BattleEffect, UnitType } from '../types';
+import type { Army, BorderFront, Country, Region, BattleEffect, UnitType, TradeRoute, ResourceType } from '../types';
 import { getTotalUnits } from '../engine/combat';
+
+const RESOURCE_HEX_COLORS: Record<ResourceType, number> = {
+  food: 0x4ade80,
+  metal: 0x9ca3af,
+  wood: 0xa16207,
+  salt: 0x67e8f9,
+  gold: 0xfacc15,
+};
 
 /** Draw army markers on the map with unit-type shield shapes */
 export class ArmyOverlay {
@@ -423,6 +431,91 @@ export class BorderFrontOverlay {
     }
     const toHex = (c: number) => Math.round(c * 255);
     return (toHex(r) << 16) | (toHex(g) << 8) | toHex(b);
+  }
+
+  destroy(): void {
+    this.container.destroy({ children: true });
+  }
+}
+
+/** Trade route dashed lines between countries */
+export class TradeRouteOverlay {
+  private container: PIXI.Container;
+  private routeGraphics: Map<string, PIXI.Graphics> = new Map();
+  private dashOffset = 0;
+
+  constructor(parent: PIXI.Container) {
+    this.container = new PIXI.Container();
+    this.container.sortableChildren = true;
+    this.container.zIndex = 3;
+    parent.addChild(this.container);
+  }
+
+  update(tradeRoutes: TradeRoute[], regions: Region[]): void {
+    const activeIds = new Set(tradeRoutes.map((r) => r.id));
+
+    // Remove stale routes
+    for (const [id, gfx] of this.routeGraphics) {
+      if (!activeIds.has(id)) {
+        this.container.removeChild(gfx);
+        gfx.destroy();
+        this.routeGraphics.delete(id);
+      }
+    }
+
+    this.dashOffset = (this.dashOffset + 0.5) % 20;
+
+    for (const route of tradeRoutes) {
+      const fromRegion = regions.find((r) => r.id === route.fromRegionId);
+      const toRegion = regions.find((r) => r.id === route.toRegionId);
+      if (!fromRegion || !toRegion) continue;
+
+      let gfx = this.routeGraphics.get(route.id);
+      if (!gfx) {
+        gfx = new PIXI.Graphics();
+        this.container.addChild(gfx);
+        this.routeGraphics.set(route.id, gfx);
+      }
+
+      gfx.clear();
+
+      const color = RESOURCE_HEX_COLORS[route.resource] ?? 0xffffff;
+      const ax = fromRegion.centroid.x;
+      const ay = fromRegion.centroid.y;
+      const bx = toRegion.centroid.x;
+      const by = toRegion.centroid.y;
+
+      // Draw animated dashed line
+      const dx = bx - ax;
+      const dy = by - ay;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      const nx = dx / len;
+      const ny = dy / len;
+
+      const dashLen = 8;
+      const gapLen = 6;
+      const totalStep = dashLen + gapLen;
+      let pos = -this.dashOffset;
+
+      gfx.lineStyle(2, color, 0.6);
+      while (pos < len) {
+        const start = Math.max(0, pos);
+        const end = Math.min(len, pos + dashLen);
+        if (end > start) {
+          gfx.moveTo(ax + nx * start, ay + ny * start);
+          gfx.lineTo(ax + nx * end, ay + ny * end);
+        }
+        pos += totalStep;
+      }
+
+      // Small resource icon at midpoint
+      const mx = (ax + bx) / 2;
+      const my = (ay + by) / 2;
+      gfx.lineStyle(1, color, 0.8);
+      gfx.beginFill(color, 0.5);
+      gfx.drawCircle(mx, my, 3);
+      gfx.endFill();
+    }
   }
 
   destroy(): void {

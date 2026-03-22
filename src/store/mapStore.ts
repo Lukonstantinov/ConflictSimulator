@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { WorldMap, Country, Region, StrategyType } from '../types';
+import type { WorldMap, Country, Region, StrategyType, ResourceStockpile } from '../types';
 import { buildVoronoiMap } from '../map/voronoi';
 import { generateCountryColor } from '../utils/colors';
 import { randomSeed } from '../utils/random';
@@ -84,6 +84,7 @@ export const useMapStore = create<MapState>((set, get) => ({
       isAlive: true,
       warWeariness: 0,
       warStartTicks: {},
+      resources: { food: 0, metal: 0, wood: 0, salt: 0, gold: 0 },
     };
 
     set({ map: { ...map, countries: [...map.countries, country] } });

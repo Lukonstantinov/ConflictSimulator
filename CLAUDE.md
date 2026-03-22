@@ -2,7 +2,7 @@
 
 ## Project: ConflictSimulator — Fantasy War Simulator
 
-### Version: 2.0.0
+### Version: 2.1.0
 
 A browser-based (PWA, iOS-optimized) fantasy war simulator with Voronoi-based world maps, configurable countries, and real-time war simulation.
 
@@ -75,13 +75,15 @@ src/
 
 ### Simulation Loop (`src/engine/simulation.ts` + `worker.ts`)
 - **Entry**: `SimulationRunner` (worker.ts) runs `setInterval` at tick rate
-- **Tick method**: `SimulationEngine.runTick()` — 6 sequential phases:
-  1. **Economy** — income, pop growth, war weariness, upkeep, auto-fortification
-  2. **Supply Attrition** — armies in enemy territory with no friendly neighbors lose 2% size/tick
-  3. **AI Decisions** — per-country: diplomacy, war declare, spawn armies, pick move targets
-  4. **Movement & Combat** — advance progress, resolve battles on arrival, capture/retreat
-  5. **Region Update** — recalculate ownership, detect eliminations
-  6. **Victory Check** — conquest/economic/territorial win conditions
+- **Tick method**: `SimulationEngine.runTick()` — 8 sequential phases:
+  1. **Economy** — income, pop growth, war weariness, upkeep, auto-fortification, resource production
+  2. **Resource Deficit** — morale penalty for armies if food/metal in deficit
+  3. **Supply Attrition** — armies in enemy territory with no friendly neighbors lose 2% size/tick
+  4. **AI Decisions** — per-country: diplomacy, war declare, spawn armies, pick move targets
+  5. **Trade Routes** — form/break trade routes every 10 ticks, apply resource transfers
+  6. **Border Front Combat** — sustained per-tick combat on contested borders
+  7. **Movement & Combat** — advance progress, resolve battles on arrival, capture/retreat
+  8. **Victory Check** — conquest/economic/territorial win conditions
 - **Output**: `StateDelta` sent to React stores each tick
 
 ---
@@ -136,6 +138,18 @@ Five strategy types defined in `StrategyType` union (`src/types/index.ts`):
 
 ---
 
+### Resources & Trade Routes (`src/engine/economy.ts` + `src/engine/simulation.ts`)
+- **Five resource types**: food, metal, wood, salt, gold
+- **Terrain base production per tick**: Plains→food(3), Mountains→metal(3), Forest→wood(3), Coast→salt(2)+food(1), Desert→salt(2)
+- **Bonus deposits**: 15% chance/region at map gen; gold rare (5%); bonus adds +2 production
+- **Army resource upkeep**: Heavy→food(0.03)+metal(0.02)/unit, Light→food(0.02)/unit, Levy→food(0.01)/unit
+- **Deficit penalties**: Food deficit→-0.02 morale/tick + 10% income loss; Metal deficit→5% income loss
+- **Gold bonus**: Gold resources directly add 2× gold production to treasury income
+- **Trade routes**: Auto-form every 10 ticks between peaceful nations with complementary surpluses (surplus >5, partner <2); max 3 routes/country; transfer 1 resource/tick; broken by war
+- **Visualization**: Animated color-coded dashed lines (green=food, gray=metal, brown=wood, cyan=salt, yellow=gold) with small resource dot at midpoint
+
+---
+
 ### Map Rendering (`src/map/renderer.ts` + `animation.ts`)
 
 #### PixiJS Layer Stack (bottom → top):
@@ -143,6 +157,7 @@ Five strategy types defined in `StrategyType` union (`src/types/index.ts`):
 worldContainer (pan/zoom)
 ├── Region polygons (zIndex 0)   — filled Voronoi cells, terrain textures
 ├── Country borders (zIndex 1)   — thick 2.5px colored edges between countries
+├── TradeRouteOverlay (zIndex 3) — animated dashed lines, color-coded by resource
 ├── ArmyOverlay (zIndex 10-11)   — circle markers + size labels
 └── BattleEffectSystem (zIndex 20) — burst animations (600ms fade+expand)
 uiContainer (fixed)
@@ -170,7 +185,7 @@ uiContainer (fixed)
 
 | Store | Key State | Key Actions |
 |-------|-----------|-------------|
-| `simStore.ts` | tick, status, speed, events[], history[], winner | addEvent, setStatus, recordDelta, reset |
+| `simStore.ts` | tick, status, speed, events[], history[], winner, tradeRoutes[] | addEvent, setStatus, recordDelta, setTradeRoutes, reset |
 | `mapStore.ts` | map (WorldMap), savedMaps[] | generateMap, assignRegion, addCountry, updateCountry |
 | `uiStore.ts` | selectedRegionId, selectedCountryId, toolMode | selectRegion, selectCountry, setToolMode |
 
@@ -179,14 +194,17 @@ uiContainer (fixed)
 ### Data Types (`src/types/index.ts`)
 
 Key interfaces:
-- `Region` — id, polygon[], centroid, neighbors[], terrain, countryId, population, fortification
-- `Country` — id, name, color, regions[], capital, armySize, economy, strategy, treasury, activeArmies[], relations, warWeariness
+- `Region` — id, polygon[], centroid, neighbors[], terrain, countryId, population, fortification, resourceProduction, bonusResource?
+- `Country` — id, name, color, regions[], capital, armySize, economy, strategy, treasury, activeArmies[], relations, warWeariness, resources (ResourceStockpile)
+- `ResourceStockpile` — food, metal, wood, salt, gold (number each)
+- `TradeRoute` — id, country1Id, country2Id, resource, amount, fromRegionId, toRegionId
 - `Army` — id, size, position (regionId), target (regionId|null), morale, progress, units (UnitComposition), borderFrontId?
 - `UnitComposition` — heavy, light, levy (troop counts per type)
 - `BorderFront` — id, attackerRegionId, defenderRegionId, attackerCountryId, defenderCountryId, attackerArmyId, defenderArmyId, frontPosition (0→1)
 - `SimEvent` — type, tick, data (typed union per event type)
-- `StateDelta` — tick, regionChanges[], countryUpdates[], armyUpdates[], events[], winner
+- `StateDelta` — tick, regionChanges[], countryUpdates[], armyUpdates[], events[], winner, tradeRoutes[]
 - `VictoryCondition` — 'conquest' | 'economic' | 'territorial'
+- `ResourceType` — 'food' | 'metal' | 'wood' | 'salt' | 'gold'
 - `StrategyType` — 'aggressive' | 'defensive' | 'expansionist' | 'opportunist' | 'turtle'
 
 ---
@@ -230,15 +248,7 @@ Six preset scenarios, each configures `regionCount`, country array, and `Victory
 
 ## Planned Features (Not Yet Implemented)
 
-### Phase 11 — Resources & Trade Routes (v2.1.0)
-- Five resource types: **food, metal, wood, salt, gold**
-- Terrain base production: Plains→food, Mountains→metal, Forest→wood, Coast→salt+food, Desert→salt
-- Random bonus deposits at map gen (15% chance/region; gold rare 5%)
-- Army upkeep in resources: Heavy needs metal, all need food; deficit → morale/income penalty
-- Trade routes auto-form between peaceful nations with complementary surpluses
-- War breaks trade routes with belligerents
-- Animated dashed lines on map (color-coded by resource: green=food, gray=metal, brown=wood, cyan=salt, yellow=gold)
-- Resource stockpile shown in CountryPanel and StatsOverlay
+(None currently planned)
 
 ---
 
@@ -253,6 +263,7 @@ npx tsc --noEmit   # Type check
 ---
 
 ## Changelog
+- **2.1.0** — Phase 11 Resources & Trade Routes + Unit Stats: five resource types (food, metal, wood, salt, gold) with terrain-based production (Plains→food, Mountains→metal, Forest→wood, Coast→salt+food, Desert→salt), random bonus deposits at map gen (15% chance/region, gold rare 5%), army resource upkeep (Heavy needs food+metal, Light/Levy need food), resource deficit morale/income penalties, trade routes auto-form between peaceful nations with complementary surpluses (max 3/country), war breaks trade routes, animated color-coded dashed lines on map for trade routes, resource stockpile shown in CountryPanel and StatsOverlay, region resource info on click, detailed per-army unit stats display (combat multiplier, speed, composition) when clicking regions with armies, bonus resource indicators on regions
 - **2.0.0** — Phase 9 & 10 Multi-Type Units & Border Combat: three unit types per army (Heavy 1.5× combat/pentagon, Light 1× baseline/diamond, Levy 0.6× cheap/circle), strategy-based unit mix (aggressive→heavy, expansionist→light, turtle→levy), unit-type spawn costs (Heavy=5, Light=3, Levy=1), army speed limited by slowest unit type, shield-shaped PixiJS markers with H/L/V labels, unit breakdown in CountryPanel and StatsOverlay; border front combat system with push mechanic (armies stop at contested borders, sustained per-tick combat with frontDelta=(ratio-1)×0.02), BorderFront visual overlay with gradient lines and front position marker, region captured on breakthrough (frontPosition≥1.0), defender retreat/garrison mechanics, peace treaty front cleanup
 - **1.8.0** — Phase 8 Scenarios & Replay: 6 preset scenarios (Two Empires, Battle Royale, Economic Race, Land Grab, World War, The Underdog), timeline replay scrubber with tick-by-tick navigation, victory conditions (conquest/economic/territorial), toast notification system for major events
 - **1.7.0** — Phase 7 Population & Warfare: region population system (growth, recruitment, income), terrain movement speed modifiers, supply line attrition for deep-territory armies, war weariness mechanic (economic/morale penalty), fortification system (AI auto-builds, defense bonus, reduced on capture), peace treaty AI (war-weary nations negotiate peace), combat fortification bonus

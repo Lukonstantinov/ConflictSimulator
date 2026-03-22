@@ -1,5 +1,40 @@
-import type { Country, Region, SimEvent, StrategyType, UnitComposition } from '../types';
+import type { Country, Region, SimEvent, StrategyType, UnitComposition, ResourceStockpile, ResourceType } from '../types';
 import { UNIT_SPAWN_COST, getTotalUnits } from './combat';
+
+/** Resource upkeep per unit type per tick */
+const UNIT_RESOURCE_UPKEEP: Record<string, Partial<ResourceStockpile>> = {
+  heavy: { food: 0.03, metal: 0.02 },
+  light: { food: 0.02 },
+  levy: { food: 0.01 },
+};
+
+export const RESOURCE_COLORS: Record<ResourceType, string> = {
+  food: '#4ade80',
+  metal: '#9ca3af',
+  wood: '#a16207',
+  salt: '#67e8f9',
+  gold: '#facc15',
+};
+
+export function emptyStockpile(): ResourceStockpile {
+  return { food: 0, metal: 0, wood: 0, salt: 0, gold: 0 };
+}
+
+/** Calculate resource deficit penalties: morale and income multiplier */
+export function getResourceDeficitPenalty(resources: ResourceStockpile): { moralePenalty: number; incomeMult: number } {
+  let moralePenalty = 0;
+  let incomeMult = 1;
+  // Food deficit: morale penalty
+  if (resources.food < 0) {
+    moralePenalty += 0.02;
+    incomeMult *= 0.9;
+  }
+  // Metal deficit: income penalty (can't maintain equipment)
+  if (resources.metal < 0) {
+    incomeMult *= 0.95;
+  }
+  return { moralePenalty, incomeMult };
+}
 
 const TERRAIN_INCOME: Record<string, number> = {
   plains: 3,
@@ -132,6 +167,42 @@ export function processEconomy(
 
     income *= 1 - (warWeariness * WAR_WEARINESS_ECON_PENALTY);
 
+    // --- Resource production ---
+    const resources: ResourceStockpile = { ...(country.resources ?? emptyStockpile()) };
+    for (const region of ownedRegions) {
+      const prod = region.resourceProduction ?? {};
+      for (const [res, amt] of Object.entries(prod)) {
+        resources[res as ResourceType] = (resources[res as ResourceType] ?? 0) + (amt as number);
+      }
+    }
+
+    // Gold resource directly contributes to treasury
+    if (resources.gold > 0) {
+      income += resources.gold * 2;
+    }
+
+    // --- Resource upkeep for armies ---
+    for (const army of country.activeArmies) {
+      const units = army.units ?? { heavy: 0, light: army.size, levy: 0 };
+      for (const [unitType, count] of Object.entries(units)) {
+        const upkeep = UNIT_RESOURCE_UPKEEP[unitType];
+        if (upkeep && count > 0) {
+          for (const [res, cost] of Object.entries(upkeep)) {
+            resources[res as ResourceType] -= (cost as number) * count;
+          }
+        }
+      }
+    }
+
+    // Resource deficit penalties
+    const deficitPenalty = getResourceDeficitPenalty(resources);
+    income *= deficitPenalty.incomeMult;
+
+    // Clamp resources to floor of -50 (deficit tracked but capped)
+    for (const key of Object.keys(resources) as ResourceType[]) {
+      resources[key] = Math.max(-50, resources[key]);
+    }
+
     // War upkeep: active armies cost money — heavier units cost more
     const armyUpkeep = country.activeArmies.length * WAR_UPKEEP_PER_ARMY;
     let sizeUpkeep = 0;
@@ -196,6 +267,7 @@ export function processEconomy(
       treasury,
       warWeariness,
       warStartTicks: updatedWarStartTicks,
+      resources,
     };
   });
 

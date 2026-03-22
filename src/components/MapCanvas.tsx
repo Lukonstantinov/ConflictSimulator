@@ -17,6 +17,7 @@ export default function MapCanvas() {
   const simStatus = useSimStore((s) => s.status);
   const events = useSimStore((s) => s.events);
   const borderFronts = useSimStore((s) => s.borderFronts);
+  const tradeRoutes = useSimStore((s) => s.tradeRoutes);
   const lastProcessedEvent = useRef(0);
 
   // Initialize renderer once when map dimensions are known
@@ -68,8 +69,8 @@ export default function MapCanvas() {
     const renderer = rendererRef.current;
     if (!renderer || !map || simStatus === 'setup') return;
 
-    renderer.updateSimulation(map.countries, map.regions, borderFronts);
-  }, [map, simStatus, borderFronts]);
+    renderer.updateSimulation(map.countries, map.regions, borderFronts, tradeRoutes);
+  }, [map, simStatus, borderFronts, tradeRoutes]);
 
   // Process battle events for effects
   useEffect(() => {
