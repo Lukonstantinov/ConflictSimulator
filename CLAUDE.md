@@ -2,7 +2,7 @@
 
 ## Project: ConflictSimulator — Fantasy War Simulator
 
-### Version: 1.1.0
+### Version: 1.1.1
 
 A browser-based (PWA, iOS-optimized) fantasy war simulator with Voronoi-based world maps, configurable countries, and real-time war simulation.
 
@@ -37,5 +37,6 @@ npx tsc --noEmit   # Type check
 ```
 
 ### Changelog
+- **1.1.1** — Add GitHub Actions workflow for GitHub Pages deployment, set Vite base path
 - **1.1.0** — Phase 1 Foundation: Vite + React + TS scaffold, Voronoi map generation (d3-delaunay + Lloyd relaxation + Perlin noise terrain), PixiJS renderer, country assignment UI, config panel, Zustand stores, IndexedDB persistence, implementation plan
 - **1.0.0** — Initial project setup, CLAUDE.md created
