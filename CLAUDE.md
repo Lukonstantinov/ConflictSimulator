@@ -2,7 +2,7 @@
 
 ## Project: ConflictSimulator — Fantasy War Simulator
 
-### Version: 1.1.2
+### Version: 1.2.0
 
 A browser-based (PWA, iOS-optimized) fantasy war simulator with Voronoi-based world maps, configurable countries, and real-time war simulation.
 
@@ -37,6 +37,7 @@ npx tsc --noEmit   # Type check
 ```
 
 ### Changelog
+- **1.2.0** — Phase 2 Simulation Core: war engine with economy system, combat resolution (terrain modifiers + defender bonus), 5-strategy AI (aggressive/defensive/expansionist/opportunist/turtle), tick-based simulation loop, play/pause/speed controls, war event log, real-time border changes
 - **1.1.2** — Fix mobile/iPhone layout: responsive map sizing, scrollable UI, stacking layout on small screens
 - **1.1.1** — Add GitHub Actions workflow for GitHub Pages deployment, set Vite base path
 - **1.1.0** — Phase 1 Foundation: Vite + React + TS scaffold, Voronoi map generation (d3-delaunay + Lloyd relaxation + Perlin noise terrain), PixiJS renderer, country assignment UI, config panel, Zustand stores, IndexedDB persistence, implementation plan
