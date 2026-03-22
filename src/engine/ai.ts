@@ -26,6 +26,9 @@ export function makeDecisions(
     (c) => c.isAlive && c.id !== country.id,
   );
 
+  // Diplomacy: form or break alliances
+  updated = manageDiplomacy(updated, allCountries, regions, tick, rng, events);
+
   // Declare wars based on strategy
   updated = declareWars(updated, enemies, tick, rng, events);
 
@@ -36,6 +39,86 @@ export function makeDecisions(
   updated = moveArmies(updated, regions, allCountries, rng);
 
   return { updatedCountry: updated, events };
+}
+
+function manageDiplomacy(
+  country: Country,
+  allCountries: Country[],
+  regions: Region[],
+  tick: number,
+  rng: SeededRNG,
+  events: SimEvent[],
+): Country {
+  const relations = { ...country.relations };
+  const strategy = country.strategy;
+
+  // Count how many wars we're in
+  const warCount = Object.values(relations).filter((r) => r === 'at_war').length;
+  const aliveOthers = allCountries.filter((c) => c.isAlive && c.id !== country.id);
+
+  for (const other of aliveOthers) {
+    const rel = relations[other.id] ?? 'neutral';
+
+    // Form alliances: defensive and turtle strategies seek allies when at war
+    if (rel === 'neutral' && warCount > 0) {
+      let allianceChance = 0;
+      switch (strategy) {
+        case 'defensive': allianceChance = 0.03; break;
+        case 'turtle': allianceChance = 0.04; break;
+        case 'opportunist': allianceChance = 0.02; break;
+        case 'expansionist': allianceChance = 0.01; break;
+        case 'aggressive': allianceChance = 0.005; break;
+      }
+
+      // More likely to ally with someone who shares an enemy
+      const sharedEnemies = Object.entries(relations)
+        .filter(([, r]) => r === 'at_war')
+        .some(([enemyId]) => other.relations[enemyId] === 'at_war');
+      if (sharedEnemies) allianceChance *= 3;
+
+      // Less likely if they're much stronger (threat assessment)
+      const ourStrength = country.regions.length + country.activeArmies.reduce((s, a) => s + a.size, 0);
+      const theirStrength = other.regions.length + other.activeArmies.reduce((s, a) => s + a.size, 0);
+      if (theirStrength > ourStrength * 2) allianceChance *= 0.3;
+
+      if (rng.next() < allianceChance) {
+        relations[other.id] = 'allied';
+        events.push({
+          tick,
+          type: 'alliance_formed',
+          actors: [country.id, other.id],
+          details: { country1: country.name, country2: other.name },
+        });
+      }
+    }
+
+    // Break alliances: aggressive and expansionist may betray allies
+    if (rel === 'allied') {
+      let betrayChance = 0;
+      switch (strategy) {
+        case 'aggressive': betrayChance = 0.008; break;
+        case 'expansionist': betrayChance = 0.005; break;
+        case 'opportunist': betrayChance = 0.003; break;
+        default: betrayChance = 0.001; break;
+      }
+
+      // More likely to betray weak allies
+      const allyStrength = other.regions.length;
+      if (allyStrength < country.regions.length * 0.3) betrayChance *= 2;
+
+      if (rng.next() < betrayChance) {
+        relations[other.id] = 'neutral';
+        events.push({
+          tick,
+          type: 'alliance_broken',
+          actors: [country.id, other.id],
+          details: { country1: country.name, country2: other.name },
+        });
+      }
+    }
+  }
+
+  return { ...country, relations };
 }
 
 function declareWars(

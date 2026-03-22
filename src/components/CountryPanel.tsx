@@ -3,6 +3,7 @@ import { useMapStore } from '../store/mapStore';
 import { useUIStore } from '../store/uiStore';
 import { useSimStore } from '../store/simStore';
 import type { StrategyType } from '../types';
+import { generateCountryName } from '../utils/names';
 
 const STRATEGIES: StrategyType[] = ['aggressive', 'defensive', 'expansionist', 'opportunist', 'turtle'];
 
@@ -23,7 +24,7 @@ export default function CountryPanel() {
   if (!map) return null;
 
   const handleAdd = () => {
-    const name = newName.trim() || `Country ${map.countries.length + 1}`;
+    const name = newName.trim() || generateCountryName(map.countries.length, map.seed);
     addCountry(name);
     setNewName('');
   };
