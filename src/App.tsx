@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import MapCanvas from './components/MapCanvas';
 import CountryPanel from './components/CountryPanel';
 import SimControls from './components/SimControls';
@@ -15,6 +15,8 @@ import { useSimStore } from './store/simStore';
 import { exportMapJSON, importMapJSON, downloadFile, readFileAsText } from './utils/persistence';
 import type { VictoryConfig, VictoryCondition } from './types';
 
+const TacticalView = lazy(() => import('./tactical/components/TacticalView'));
+
 const DEFAULT_REGION_COUNT = 60;
 
 export default function App() {
@@ -28,6 +30,8 @@ export default function App() {
   const showCountryPanel = useUIStore((s) => s.showCountryPanel);
   const toggleCountryPanel = useUIStore((s) => s.toggleCountryPanel);
   const selectedRegionId = useUIStore((s) => s.selectedRegionId);
+  const gameMode = useUIStore((s) => s.gameMode);
+  const setGameMode = useUIStore((s) => s.setGameMode);
   const simStatus = useSimStore((s) => s.status);
 
   const [seedInput, setSeedInput] = useState('');
@@ -82,6 +86,32 @@ export default function App() {
     if (importInputRef.current) importInputRef.current.value = '';
   };
 
+  if (gameMode === 'tactical') {
+    return (
+      <div className="flex flex-col min-h-[100dvh] bg-gray-900 text-white">
+        <div className="bg-gray-800 px-3 py-2 flex items-center gap-2 border-b border-gray-700">
+          <h1 className="font-bold text-sm mr-1">ConflictSimulator</h1>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setGameMode('strategic')}
+              className="bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-xs"
+            >
+              Strategic
+            </button>
+            <button
+              className="bg-blue-600 px-2 py-1 rounded text-xs"
+            >
+              Tactical
+            </button>
+          </div>
+        </div>
+        <Suspense fallback={<div className="flex-1 flex items-center justify-center text-gray-500">Loading tactical mode...</div>}>
+          <TacticalView />
+        </Suspense>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col md:flex-row min-h-[100dvh] bg-gray-900 text-white">
       {/* Toast Notifications */}
@@ -92,6 +122,19 @@ export default function App() {
         {/* Top Bar */}
         <div className="bg-gray-800 px-3 py-2 flex flex-wrap items-center gap-2 border-b border-gray-700">
           <h1 className="font-bold text-sm mr-1">ConflictSimulator</h1>
+          <div className="flex gap-1">
+            <button
+              className="bg-blue-600 px-2 py-1 rounded text-xs"
+            >
+              Strategic
+            </button>
+            <button
+              onClick={() => setGameMode('tactical')}
+              className="bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-xs"
+            >
+              Tactical
+            </button>
+          </div>
 
           <input
             type="number"
