@@ -2,7 +2,7 @@
 
 ## Project: ConflictSimulator — Fantasy War Simulator
 
-### Version: 2.1.0
+### Version: 3.0.0
 
 A browser-based (PWA, iOS-optimized) fantasy war simulator with Voronoi-based world maps, configurable countries, and real-time war simulation.
 
@@ -246,9 +246,56 @@ Six preset scenarios, each configures `regionCount`, country array, and `Victory
 
 ---
 
-## Planned Features (Not Yet Implemented)
+## Tactical Combat Mode (`src/tactical/`)
 
-(None currently planned)
+Parallel game mode alongside the strategic simulator. Grid-based real-time tactical combat with modern military units.
+
+### Directory Structure
+```
+src/tactical/
+├── types.ts              # Tactical interfaces (TacticalTile, TacticalUnit, etc.)
+├── engine/
+│   ├── TacticalEngine.ts # Real-time tick loop (10 ticks/sec), 7-phase processing
+│   ├── combat.ts         # Hit chance, damage, cover, morale/suppression
+│   ├── movement.ts       # A* pathfinding on grid, terrain speed modifiers
+│   ├── los.ts            # Bresenham line-of-sight, fog of war computation
+│   └── ai.ts             # Defender/attacker AI decision trees
+├── map/
+│   ├── grid.ts           # Procedural village map generation
+│   ├── renderer.ts       # PixiJS tactical renderer (grid, units, effects)
+│   ├── overlays.ts       # Fog of war, movement range overlays
+│   └── scenarios.ts      # Village Assault scenario definition
+├── store/
+│   └── tacticalStore.ts  # Zustand store for tactical state
+└── components/
+    ├── TacticalView.tsx   # Main tactical mode container
+    ├── TacticalCanvas.tsx # PixiJS canvas wrapper with click handling
+    ├── TacticalHUD.tsx    # Unit info, kill counts, victory banner
+    └── TacticalControls.tsx # Play/pause/speed, faction select
+```
+
+### Unit Types
+- **Infantry**: Squad-based (4-12 soldiers), enters buildings, range 6
+- **Tank**: High armor (0.7), high damage (40), range 10, turret facing
+- **APC**: Fast (2.5 speed), medium armor (0.4), range 4
+
+### Terrain Types
+- open, road, building, rubble, trees, water, trench
+- Each has cover (0-0.6) and speed modifiers (0.3-1.3)
+
+### Combat System
+- Hit chance = baseAccuracy(0.7) × distanceMod × coverMod × stateMod
+- Suppression at morale <20, retreat at morale <10
+- Auto-targeting nearest enemy in range + LOS
+
+### Planned Features (Not Yet Implemented)
+
+- Phase 2: Artillery, drones, helicopters, snipers, ATGM teams
+- Phase 3: Ammo/supply, building destruction, smoke grenades, medics
+- Phase 4: Map editor, procedural generation presets
+- Phase 5: Strategic-tactical integration (resolve battles tactically)
+- Phase 6: Mobile polish, sound effects, tutorial
+- Phase 7: Multiplayer (WebSocket/WebRTC)
 
 ---
 
@@ -263,6 +310,7 @@ npx tsc --noEmit   # Type check
 ---
 
 ## Changelog
+- **3.0.0** — Tactical Combat Mode: grid-based real-time tactical combat with modern military units (infantry squads, tanks, APCs), A* pathfinding, Bresenham line-of-sight, fog of war, cover/terrain system, tactical AI (defender positions in buildings, attacker advances with cover), Village Assault scenario (60x40 grid, procedural village), PixiJS renderer with unit markers and shot effects, play/pause/speed controls, faction selection, mode switcher in top bar (Strategic/Tactical), lazy-loaded tactical view
 - **2.1.0** — Phase 11 Resources & Trade Routes + Unit Stats: five resource types (food, metal, wood, salt, gold) with terrain-based production (Plains→food, Mountains→metal, Forest→wood, Coast→salt+food, Desert→salt), random bonus deposits at map gen (15% chance/region, gold rare 5%), army resource upkeep (Heavy needs food+metal, Light/Levy need food), resource deficit morale/income penalties, trade routes auto-form between peaceful nations with complementary surpluses (max 3/country), war breaks trade routes, animated color-coded dashed lines on map for trade routes, resource stockpile shown in CountryPanel and StatsOverlay, region resource info on click, detailed per-army unit stats display (combat multiplier, speed, composition) when clicking regions with armies, bonus resource indicators on regions
 - **2.0.0** — Phase 9 & 10 Multi-Type Units & Border Combat: three unit types per army (Heavy 1.5× combat/pentagon, Light 1× baseline/diamond, Levy 0.6× cheap/circle), strategy-based unit mix (aggressive→heavy, expansionist→light, turtle→levy), unit-type spawn costs (Heavy=5, Light=3, Levy=1), army speed limited by slowest unit type, shield-shaped PixiJS markers with H/L/V labels, unit breakdown in CountryPanel and StatsOverlay; border front combat system with push mechanic (armies stop at contested borders, sustained per-tick combat with frontDelta=(ratio-1)×0.02), BorderFront visual overlay with gradient lines and front position marker, region captured on breakthrough (frontPosition≥1.0), defender retreat/garrison mechanics, peace treaty front cleanup
 - **1.8.0** — Phase 8 Scenarios & Replay: 6 preset scenarios (Two Empires, Battle Royale, Economic Race, Land Grab, World War, The Underdog), timeline replay scrubber with tick-by-tick navigation, victory conditions (conquest/economic/territorial), toast notification system for major events
