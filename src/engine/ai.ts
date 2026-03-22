@@ -1,9 +1,11 @@
 import type { Country, Region, Army, SimEvent, StrategyType } from '../types';
 import { SeededRNG } from '../utils/random';
 import { canAffordArmy, spawnArmy } from './economy';
+import { getTerrainSpeed } from './combat';
 
 interface AIAction {
   updatedCountry: Country;
+  updatedRegions: Region[];
   events: SimEvent[];
 }
 
@@ -14,31 +16,34 @@ export function makeDecisions(
   tick: number,
   rng: SeededRNG,
 ): AIAction {
-  if (!country.isAlive) return { updatedCountry: country, events: [] };
+  if (!country.isAlive) return { updatedCountry: country, updatedRegions: regions, events: [] };
 
   const events: SimEvent[] = [];
   let updated = { ...country };
+  let updatedRegions = regions.map((r) => ({ ...r }));
 
-  const ownedRegions = regions.filter((r) => r.countryId === country.id);
-  if (ownedRegions.length === 0) return { updatedCountry: updated, events };
+  const ownedRegions = updatedRegions.filter((r) => r.countryId === country.id);
+  if (ownedRegions.length === 0) return { updatedCountry: updated, updatedRegions, events };
 
   const enemies = allCountries.filter(
     (c) => c.isAlive && c.id !== country.id,
   );
 
-  // Diplomacy: form or break alliances
+  // Diplomacy: form or break alliances, negotiate peace
   updated = manageDiplomacy(updated, allCountries, regions, tick, rng, events);
 
   // Declare wars based on strategy
   updated = declareWars(updated, enemies, tick, rng, events);
 
   // Spawn armies if affordable and needed
-  updated = spawnArmies(updated, ownedRegions, regions, rng);
+  const spawnResult = spawnArmies(updated, ownedRegions, updatedRegions, rng);
+  updated = spawnResult.country;
+  updatedRegions = spawnResult.regions;
 
   // Move armies toward targets
-  updated = moveArmies(updated, regions, allCountries, rng);
+  updated = moveArmies(updated, updatedRegions, allCountries, rng);
 
-  return { updatedCountry: updated, events };
+  return { updatedCountry: updated, updatedRegions, events };
 }
 
 function manageDiplomacy(
@@ -51,6 +56,7 @@ function manageDiplomacy(
 ): Country {
   const relations = { ...country.relations };
   const strategy = country.strategy;
+  const warStartTicks = { ...(country.warStartTicks ?? {}) };
 
   // Count how many wars we're in
   const warCount = Object.values(relations).filter((r) => r === 'at_war').length;
@@ -58,6 +64,35 @@ function manageDiplomacy(
 
   for (const other of aliveOthers) {
     const rel = relations[other.id] ?? 'neutral';
+
+    // Peace treaty: negotiate peace after prolonged war with high weariness
+    if (rel === 'at_war') {
+      const warDuration = tick - (warStartTicks[other.id] ?? tick);
+      const weariness = country.warWeariness ?? 0;
+
+      let peaceChance = 0;
+      if (warDuration > 50) {
+        peaceChance = weariness * 0.02;
+        // Defensive/turtle more likely to seek peace
+        if (strategy === 'defensive') peaceChance *= 2;
+        if (strategy === 'turtle') peaceChance *= 3;
+        // Less likely if we're winning (have more territory)
+        if (country.regions.length > other.regions.length * 1.5) peaceChance *= 0.3;
+        // More likely if we're losing
+        if (country.regions.length < other.regions.length * 0.5) peaceChance *= 2;
+      }
+
+      if (rng.next() < peaceChance) {
+        relations[other.id] = 'neutral';
+        delete warStartTicks[other.id];
+        events.push({
+          tick,
+          type: 'peace_treaty',
+          actors: [country.id, other.id],
+          details: { country1: country.name, country2: other.name, duration: warDuration },
+        });
+      }
+    }
 
     // Form alliances: defensive and turtle strategies seek allies when at war
     if (rel === 'neutral' && warCount > 0) {
@@ -118,7 +153,7 @@ function manageDiplomacy(
     }
   }
 
-  return { ...country, relations };
+  return { ...country, relations, warStartTicks };
 }
 
 function declareWars(
@@ -155,6 +190,10 @@ function declareWars(
         break;
     }
 
+    // War weariness reduces willingness to start new wars
+    const weariness = country.warWeariness ?? 0;
+    warChance *= (1 - weariness * 0.5);
+
     if (rng.next() < warChance) {
       relations[enemy.id] = 'at_war';
       events.push({
@@ -174,16 +213,17 @@ function spawnArmies(
   ownedRegions: Region[],
   allRegions: Region[],
   rng: SeededRNG,
-): Country {
+): { country: Country; regions: Region[] } {
   let updated = { ...country };
   const strategy = country.strategy;
+  const updatedRegions = allRegions.map((r) => ({ ...r }));
 
   // Determine spawn size based on strategy and stats
   const baseSize = Math.floor(country.armySize * 0.3) + 5;
 
   // Limit total armies
   const maxArmies = strategy === 'turtle' ? 2 : strategy === 'defensive' ? 3 : 5;
-  if (updated.activeArmies.length >= maxArmies) return updated;
+  if (updated.activeArmies.length >= maxArmies) return { country: updated, regions: updatedRegions };
 
   // Check if we have enemies at war with us
   const atWar = Object.entries(updated.relations).some(([, rel]) => rel === 'at_war');
@@ -209,10 +249,11 @@ function spawnArmies(
   }
 
   if (shouldSpawn && canAffordArmy(updated, baseSize)) {
-    // Spawn from a border region (one that has enemy neighbors)
+    // Spawn from a border region (one that has enemy neighbors) with sufficient population
     const borderRegions = ownedRegions.filter((r) =>
+      r.population >= baseSize * 0.3 &&
       r.neighbors.some((nId) => {
-        const neighbor = allRegions.find((rr) => rr.id === nId);
+        const neighbor = updatedRegions.find((rr) => rr.id === nId);
         return neighbor && neighbor.countryId !== country.id && neighbor.terrain !== 'ocean';
       }),
     );
@@ -221,10 +262,18 @@ function spawnArmies(
       ? borderRegions[rng.int(0, borderRegions.length - 1)]
       : ownedRegions[rng.int(0, ownedRegions.length - 1)];
 
-    updated = spawnArmy(updated, spawnRegion.id, baseSize);
+    updated = spawnArmy(updated, spawnRegion.id, baseSize, updatedRegions);
+    // Update the region's population in our local copy
+    const regionIdx = updatedRegions.findIndex((r) => r.id === spawnRegion.id);
+    if (regionIdx >= 0) {
+      updatedRegions[regionIdx] = {
+        ...updatedRegions[regionIdx],
+        population: Math.max(0, updatedRegions[regionIdx].population - baseSize * 0.5),
+      };
+    }
   }
 
-  return updated;
+  return { country: updated, regions: updatedRegions };
 }
 
 function moveArmies(
@@ -241,9 +290,11 @@ function moveArmies(
   );
 
   const updatedArmies = country.activeArmies.map((army) => {
-    // If army is moving, continue movement
+    // If army is moving, continue movement with terrain-based speed
     if (army.target !== null && army.progress < 1) {
-      return { ...army, progress: army.progress + 0.25 };
+      const targetRegion = regions.find((r) => r.id === army.target);
+      const speed = targetRegion ? getTerrainSpeed(targetRegion.terrain) : 0.25;
+      return { ...army, progress: Math.min(1, army.progress + speed) };
     }
 
     // If army arrived, reset progress
@@ -293,12 +344,12 @@ function moveArmies(
         break;
 
       case 'opportunist':
-        // Attack weakest neighbor
+        // Attack weakest neighbor, prefer low-fortification targets
         if (enemyRegions.length > 0) {
           const withDefenders = enemyRegions.map((r) => {
             const owner = allCountries.find((c) => c.id === r.countryId);
             const defenders = owner?.activeArmies.filter((a) => a.position === r.id) ?? [];
-            const defenseStr = defenders.reduce((sum, a) => sum + a.size, 0);
+            const defenseStr = defenders.reduce((sum, a) => sum + a.size, 0) + (r.fortification ?? 0) * 10;
             return { region: r, defenseStr };
           });
           withDefenders.sort((a, b) => a.defenseStr - b.defenseStr);

@@ -1,10 +1,16 @@
 import { useSimStore } from '../store/simStore';
 import { useMapStore } from '../store/mapStore';
 import { simulationRunner } from '../engine/worker';
+import type { VictoryConfig, VictoryCondition } from '../types';
 
 const SPEED_OPTIONS = [0.5, 1, 2, 5, 10];
 
-export default function SimControls() {
+interface SimControlsProps {
+  victoryConfig: VictoryConfig;
+  onVictoryConfigChange: (config: VictoryConfig) => void;
+}
+
+export default function SimControls({ victoryConfig, onVictoryConfigChange }: SimControlsProps) {
   const status = useSimStore((s) => s.status);
   const speed = useSimStore((s) => s.speed);
   const tick = useSimStore((s) => s.tick);
@@ -31,7 +37,7 @@ export default function SimControls() {
     if (!map || !canStart) return;
 
     reset();
-    simulationRunner.init(map.regions, map.countries, map.seed);
+    simulationRunner.init(map.regions, map.countries, map.seed, victoryConfig);
 
     simulationRunner.setOnTick((delta) => {
       setTick(delta.tick);
@@ -95,8 +101,34 @@ export default function SimControls() {
     simulationRunner.setSpeed(newSpeed);
   };
 
+  const victoryLabel: Record<VictoryCondition, string> = {
+    conquest: 'Conquest',
+    economic: 'Economic',
+    territorial: 'Territorial',
+  };
+
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {/* Victory Condition Selector (only in setup) */}
+      {status === 'setup' && (
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-gray-400">Victory:</span>
+          {(['conquest', 'economic', 'territorial'] as VictoryCondition[]).map((vc) => (
+            <button
+              key={vc}
+              onClick={() => onVictoryConfigChange({ ...victoryConfig, condition: vc })}
+              className={`px-2 py-0.5 rounded text-xs ${
+                victoryConfig.condition === vc
+                  ? 'bg-cyan-600 text-white'
+                  : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+              }`}
+            >
+              {victoryLabel[vc]}
+            </button>
+          ))}
+        </div>
+      )}
+
       {status === 'setup' && (
         <button
           onClick={handleStart}
@@ -156,15 +188,18 @@ export default function SimControls() {
         </div>
       )}
 
-      {/* Tick counter */}
+      {/* Tick counter & victory condition */}
       {status !== 'setup' && (
-        <span className="text-xs text-gray-400 ml-1">Tick: {tick}</span>
+        <span className="text-xs text-gray-400 ml-1">
+          Tick: {tick}
+          <span className="text-gray-600 ml-1">({victoryLabel[victoryConfig.condition]})</span>
+        </span>
       )}
 
       {/* Winner */}
       {status === 'finished' && winnerCountry && (
         <span className="text-sm font-bold text-yellow-400 ml-2">
-          {winnerCountry.name} wins!
+          {winnerCountry.name} wins! ({victoryLabel[victoryConfig.condition]})
         </span>
       )}
     </div>

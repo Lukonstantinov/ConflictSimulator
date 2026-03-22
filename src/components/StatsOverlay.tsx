@@ -30,12 +30,18 @@ export default function StatsOverlay() {
 
   // Terrain breakdown
   const terrainCounts: Record<string, number> = {};
+  let totalPop = 0;
+  let totalForts = 0;
   for (const rId of country.regions) {
     const region = map.regions.find((r) => r.id === rId);
     if (region) {
       terrainCounts[region.terrain] = (terrainCounts[region.terrain] || 0) + 1;
+      totalPop += region.population;
+      totalForts += region.fortification;
     }
   }
+
+  const warWeariness = country.warWeariness ?? 0;
 
   return (
     <div className="absolute top-4 right-4 bg-gray-800 bg-opacity-95 rounded-lg p-4 text-white text-xs w-56 z-50 shadow-lg border border-gray-600">
@@ -60,6 +66,10 @@ export default function StatsOverlay() {
           <span>{Math.floor(country.treasury)}</span>
         </div>
         <div className="flex justify-between">
+          <span className="text-gray-400">Population:</span>
+          <span>{Math.floor(totalPop)}</span>
+        </div>
+        <div className="flex justify-between">
           <span className="text-gray-400">Armies:</span>
           <span>{country.activeArmies.length}</span>
         </div>
@@ -75,6 +85,22 @@ export default function StatsOverlay() {
           <span className="text-gray-400">Strategy:</span>
           <span className="capitalize">{country.strategy}</span>
         </div>
+
+        {/* War Weariness */}
+        {warWeariness > 0 && (
+          <div className="flex justify-between">
+            <span className="text-orange-400">War weariness:</span>
+            <span className="text-orange-300">{(warWeariness * 100).toFixed(0)}%</span>
+          </div>
+        )}
+
+        {/* Fortifications */}
+        {totalForts > 0 && (
+          <div className="flex justify-between">
+            <span className="text-yellow-400">Fortifications:</span>
+            <span className="text-yellow-300">{totalForts} total</span>
+          </div>
+        )}
 
         {Object.keys(terrainCounts).length > 0 && (
           <div className="border-t border-gray-700 pt-1.5 mt-1.5">

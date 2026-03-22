@@ -6,10 +6,14 @@ import EventLog from './components/EventLog';
 import StatsOverlay from './components/StatsOverlay';
 import GodModePanel from './components/GodModePanel';
 import StatsDashboard from './components/StatsDashboard';
+import ScenarioPanel from './components/ScenarioPanel';
+import TimelineReplay from './components/TimelineReplay';
+import ToastNotifications from './components/ToastNotifications';
 import { useMapStore } from './store/mapStore';
 import { useUIStore } from './store/uiStore';
 import { useSimStore } from './store/simStore';
 import { exportMapJSON, importMapJSON, downloadFile, readFileAsText } from './utils/persistence';
+import type { VictoryConfig, VictoryCondition } from './types';
 
 const DEFAULT_REGION_COUNT = 60;
 
@@ -31,6 +35,11 @@ export default function App() {
   const [showLoadMenu, setShowLoadMenu] = useState(false);
   const [mapSize, setMapSize] = useState({ w: 800, h: 600 });
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [victoryConfig, setVictoryConfig] = useState<VictoryConfig>({
+    condition: 'conquest',
+    economicThreshold: 5000,
+    territorialPercent: 75,
+  });
 
   useEffect(() => {
     refreshSavedMapsList();
@@ -75,6 +84,9 @@ export default function App() {
 
   return (
     <div className="flex flex-col md:flex-row min-h-[100dvh] bg-gray-900 text-white">
+      {/* Toast Notifications */}
+      <ToastNotifications />
+
       {/* Main Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Bar */}
@@ -107,6 +119,9 @@ export default function App() {
           >
             Generate
           </button>
+
+          {/* Scenario Selector */}
+          <ScenarioPanel mapSize={mapSize} onVictoryConfigChange={setVictoryConfig} />
 
           {map && (
             <>
@@ -199,7 +214,10 @@ export default function App() {
         {/* Simulation Controls */}
         {map && (
           <div className="bg-gray-800 px-3 py-2 border-b border-gray-700">
-            <SimControls />
+            <SimControls
+              victoryConfig={victoryConfig}
+              onVictoryConfigChange={setVictoryConfig}
+            />
           </div>
         )}
 
@@ -211,7 +229,7 @@ export default function App() {
             <div className="flex items-center justify-center h-full text-gray-500">
               <div className="text-center">
                 <p className="text-2xl mb-2">ConflictSimulator</p>
-                <p className="text-sm">Generate a map to get started</p>
+                <p className="text-sm">Generate a map or choose a scenario to get started</p>
               </div>
             </div>
           )}
@@ -221,6 +239,10 @@ export default function App() {
             <div className="absolute bottom-4 left-4 bg-gray-800 bg-opacity-90 rounded px-3 py-2 text-xs">
               <p>Region #{selectedRegion.id}</p>
               <p>Terrain: {selectedRegion.terrain}</p>
+              <p>Population: {Math.floor(selectedRegion.population)}</p>
+              {selectedRegion.fortification > 0 && (
+                <p>Fortification: {'★'.repeat(selectedRegion.fortification)}</p>
+              )}
               <p>
                 Owner:{' '}
                 {selectedRegion.countryId
@@ -239,6 +261,9 @@ export default function App() {
 
         {/* Event Log */}
         <EventLog />
+
+        {/* Timeline Replay */}
+        <TimelineReplay />
 
         {/* Post-War Statistics */}
         <StatsDashboard />

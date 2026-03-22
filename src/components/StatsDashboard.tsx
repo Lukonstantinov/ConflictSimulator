@@ -45,6 +45,8 @@ export default function StatsDashboard() {
     const warDeclarations = events.filter((e) => e.type === 'war_declared').length;
     const eliminations = events.filter((e) => e.type === 'country_eliminated').length;
     const alliances = events.filter((e) => e.type === 'alliance_formed').length;
+    const peaceTreaties = events.filter((e) => e.type === 'peace_treaty').length;
+    const fortifications = events.filter((e) => e.type === 'fortification_built').length;
 
     // Peak territory for each country
     const peakTerritory: Record<string, number> = {};
@@ -62,6 +64,8 @@ export default function StatsDashboard() {
       warDeclarations,
       eliminations,
       alliances,
+      peaceTreaties,
+      fortifications,
       peakTerritory,
     };
   }, [events, map, territoryHistory]);
@@ -97,6 +101,14 @@ export default function StatsDashboard() {
             <div className="flex justify-between">
               <span className="text-gray-400">Countries eliminated:</span>
               <span>{stats.eliminations}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">Peace treaties:</span>
+              <span>{stats.peaceTreaties}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">Fortifications built:</span>
+              <span>{stats.fortifications}</span>
             </div>
           </div>
         </div>

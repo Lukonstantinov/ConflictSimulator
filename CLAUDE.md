@@ -2,7 +2,7 @@
 
 ## Project: ConflictSimulator — Fantasy War Simulator
 
-### Version: 1.6.0
+### Version: 1.8.0
 
 A browser-based (PWA, iOS-optimized) fantasy war simulator with Voronoi-based world maps, configurable countries, and real-time war simulation.
 
@@ -37,6 +37,8 @@ npx tsc --noEmit   # Type check
 ```
 
 ### Changelog
+- **1.8.0** — Phase 8 Scenarios & Replay: 6 preset scenarios (Two Empires, Battle Royale, Economic Race, Land Grab, World War, The Underdog), timeline replay scrubber with tick-by-tick navigation, victory conditions (conquest/economic/territorial), toast notification system for major events
+- **1.7.0** — Phase 7 Population & Warfare: region population system (growth, recruitment, income), terrain movement speed modifiers, supply line attrition for deep-territory armies, war weariness mechanic (economic/morale penalty), fortification system (AI auto-builds, defense bonus, reduced on capture), peace treaty AI (war-weary nations negotiate peace), combat fortification bonus
 - **1.6.0** — Phase 6 Advanced Features: procedural fantasy country name generator, diplomacy AI (alliance formation/betrayal based on threat assessment), replay history recording, post-war statistics dashboard (battle records, territory charts), map export/import (JSON)
 - **1.5.0** — Phase 5 PWA & Mobile: vite-plugin-pwa integration, web app manifest, service worker with offline caching, iOS safe area insets, touch-optimized viewport, Add to Home Screen support
 - **1.4.0** — Phase 4 God Mode: pause-and-modify intervention (adjust army/economy/strategy mid-sim), force wars/alliances/peace between countries, spawn reinforcements, live country stats overlay, what-if branching (save/load simulation snapshots)

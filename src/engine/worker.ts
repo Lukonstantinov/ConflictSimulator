@@ -1,4 +1,4 @@
-import type { Region, Country, StateDelta } from '../types';
+import type { Region, Country, StateDelta, VictoryConfig } from '../types';
 import { SimulationEngine } from './simulation';
 
 /**
@@ -12,9 +12,9 @@ export class SimulationRunner {
   private onTick: ((delta: StateDelta) => void) | null = null;
   private onFinished: ((winnerId: string) => void) | null = null;
 
-  init(regions: Region[], countries: Country[], seed: number): void {
+  init(regions: Region[], countries: Country[], seed: number, victoryConfig?: VictoryConfig): void {
     this.stop();
-    this.engine = new SimulationEngine(regions, countries, seed);
+    this.engine = new SimulationEngine(regions, countries, seed, victoryConfig);
   }
 
   setOnTick(handler: (delta: StateDelta) => void): void {

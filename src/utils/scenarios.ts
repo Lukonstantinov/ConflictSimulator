@@ -1,0 +1,88 @@
+import type { Scenario } from '../types';
+
+export const SCENARIOS: Scenario[] = [
+  {
+    id: 'two-empires',
+    name: 'Two Empires',
+    description: 'Two mighty empires clash for supremacy. A classic 1v1 showdown.',
+    regionCount: 50,
+    countries: [
+      { name: 'Aethoria', strategy: 'aggressive', armySize: 70, economy: 60 },
+      { name: 'Drakmar', strategy: 'defensive', armySize: 60, economy: 70 },
+    ],
+    autoAssign: true,
+    victoryCondition: 'conquest',
+  },
+  {
+    id: 'battle-royale',
+    name: 'Battle Royale',
+    description: 'Five nations, one winner. A chaotic free-for-all.',
+    regionCount: 80,
+    countries: [
+      { name: 'Valorheim', strategy: 'aggressive', armySize: 60, economy: 50 },
+      { name: 'Sylvandor', strategy: 'defensive', armySize: 50, economy: 60 },
+      { name: 'Kharnost', strategy: 'expansionist', armySize: 55, economy: 55 },
+      { name: 'Itheros', strategy: 'opportunist', armySize: 65, economy: 45 },
+      { name: 'Forthelm', strategy: 'turtle', armySize: 45, economy: 70 },
+    ],
+    autoAssign: true,
+    victoryCondition: 'conquest',
+  },
+  {
+    id: 'economic-race',
+    name: 'Economic Race',
+    description: 'First nation to accumulate 5000 gold wins. Trade or conquer?',
+    regionCount: 60,
+    countries: [
+      { name: 'Goldreach', strategy: 'expansionist', armySize: 40, economy: 80 },
+      { name: 'Ironvault', strategy: 'turtle', armySize: 50, economy: 70 },
+      { name: 'Silkport', strategy: 'defensive', armySize: 45, economy: 75 },
+      { name: 'Warforged', strategy: 'aggressive', armySize: 70, economy: 50 },
+    ],
+    autoAssign: true,
+    victoryCondition: 'economic',
+  },
+  {
+    id: 'land-grab',
+    name: 'Land Grab',
+    description: 'Control 75% of the land to win. Expand or die.',
+    regionCount: 70,
+    countries: [
+      { name: 'Vastoria', strategy: 'expansionist', armySize: 55, economy: 55 },
+      { name: 'Thorncrest', strategy: 'aggressive', armySize: 65, economy: 45 },
+      { name: 'Willowmere', strategy: 'defensive', armySize: 45, economy: 65 },
+    ],
+    autoAssign: true,
+    victoryCondition: 'territorial',
+  },
+  {
+    id: 'world-war',
+    name: 'World War',
+    description: 'Eight nations on a massive map. Alliances form and break as superpowers emerge.',
+    regionCount: 120,
+    countries: [
+      { name: 'Stormgard', strategy: 'aggressive', armySize: 60, economy: 50 },
+      { name: 'Moonvale', strategy: 'defensive', armySize: 50, economy: 60 },
+      { name: 'Ashlands', strategy: 'expansionist', armySize: 55, economy: 55 },
+      { name: 'Frostpeak', strategy: 'turtle', armySize: 40, economy: 70 },
+      { name: 'Sunfire', strategy: 'opportunist', armySize: 65, economy: 45 },
+      { name: 'Deepholm', strategy: 'defensive', armySize: 55, economy: 60 },
+      { name: 'Crimsonmarch', strategy: 'aggressive', armySize: 70, economy: 40 },
+      { name: 'Emeraldwood', strategy: 'expansionist', armySize: 50, economy: 65 },
+    ],
+    autoAssign: true,
+    victoryCondition: 'conquest',
+  },
+  {
+    id: 'underdog',
+    name: 'The Underdog',
+    description: 'One small nation surrounded by a powerful empire. Can David beat Goliath?',
+    regionCount: 50,
+    countries: [
+      { name: 'Goliathus', strategy: 'aggressive', armySize: 80, economy: 70 },
+      { name: 'Tinyhold', strategy: 'turtle', armySize: 90, economy: 90 },
+    ],
+    autoAssign: true,
+    victoryCondition: 'conquest',
+  },
+];
