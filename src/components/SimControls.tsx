@@ -14,6 +14,8 @@ export default function SimControls() {
   const setTick = useSimStore((s) => s.setTick);
   const setWinner = useSimStore((s) => s.setWinner);
   const addEvent = useSimStore((s) => s.addEvent);
+  const recordDelta = useSimStore((s) => s.recordDelta);
+  const recordTerritory = useSimStore((s) => s.recordTerritory);
   const reset = useSimStore((s) => s.reset);
 
   const map = useMapStore((s) => s.map);
@@ -48,6 +50,14 @@ export default function SimControls() {
       for (const evt of delta.events) {
         addEvent(evt);
       }
+
+      // Record for replay & stats
+      recordDelta(delta);
+      const terrCounts: Record<string, number> = {};
+      for (const cu of delta.countryUpdates) {
+        if (cu.regions) terrCounts[cu.id] = cu.regions.length;
+      }
+      recordTerritory(terrCounts);
 
       // Handle eliminations
       for (const elimId of delta.eliminatedCountries) {

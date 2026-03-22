@@ -1,11 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import MapCanvas from './components/MapCanvas';
 import CountryPanel from './components/CountryPanel';
 import SimControls from './components/SimControls';
 import EventLog from './components/EventLog';
+import StatsOverlay from './components/StatsOverlay';
+import GodModePanel from './components/GodModePanel';
+import StatsDashboard from './components/StatsDashboard';
 import { useMapStore } from './store/mapStore';
 import { useUIStore } from './store/uiStore';
 import { useSimStore } from './store/simStore';
+import { exportMapJSON, importMapJSON, downloadFile, readFileAsText } from './utils/persistence';
 
 const DEFAULT_REGION_COUNT = 60;
 
@@ -26,6 +30,7 @@ export default function App() {
   const [regionCount, setRegionCount] = useState(DEFAULT_REGION_COUNT);
   const [showLoadMenu, setShowLoadMenu] = useState(false);
   const [mapSize, setMapSize] = useState({ w: 800, h: 600 });
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     refreshSavedMapsList();
@@ -49,6 +54,24 @@ export default function App() {
   };
 
   const selectedRegion = map?.regions.find((r) => r.id === selectedRegionId);
+
+  const handleExport = () => {
+    if (!map) return;
+    const json = exportMapJSON(map);
+    downloadFile(json, `${map.name}.json`);
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await readFileAsText(file);
+    const imported = importMapJSON(text);
+    if (imported) {
+      useMapStore.setState({ map: imported });
+    }
+    // Reset input so same file can be re-imported
+    if (importInputRef.current) importInputRef.current.value = '';
+  };
 
   return (
     <div className="flex flex-col md:flex-row min-h-[100dvh] bg-gray-900 text-white">
@@ -141,6 +164,30 @@ export default function App() {
             </>
           )}
 
+          {map && (
+            <>
+              <button
+                onClick={handleExport}
+                className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm"
+              >
+                Export
+              </button>
+              <button
+                onClick={() => importInputRef.current?.click()}
+                className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm"
+              >
+                Import
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleImport}
+                className="hidden"
+              />
+            </>
+          )}
+
           <button
             onClick={toggleCountryPanel}
             className="md:ml-auto bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm"
@@ -182,10 +229,19 @@ export default function App() {
               </p>
             </div>
           )}
+
+          {/* Live Stats Overlay */}
+          <StatsOverlay />
         </div>
+
+        {/* God Mode Panel */}
+        <GodModePanel />
 
         {/* Event Log */}
         <EventLog />
+
+        {/* Post-War Statistics */}
+        <StatsDashboard />
       </div>
 
       {/* Country Panel — below map on mobile, side on desktop */}

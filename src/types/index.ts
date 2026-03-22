@@ -74,6 +74,20 @@ export interface BattleResult {
   defenderRemaining: number;
 }
 
+export interface BattleEffect {
+  regionId: number;
+  x: number;
+  y: number;
+  tick: number;
+  attackerWins: boolean;
+}
+
+export interface SimulationSnapshot {
+  regions: Region[];
+  countries: Country[];
+  tick: number;
+}
+
 export interface WorkerMessage {
   type: 'init' | 'start' | 'pause' | 'resume' | 'set_speed' | 'update_state';
   payload?: unknown;

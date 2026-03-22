@@ -2,10 +2,29 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#1f2937" />
+    <meta name="description" content="Fantasy war simulator with Voronoi maps and real-time battles" />
+    <link rel="icon" type="image/svg+xml" href="/ConflictSimulator/favicon.svg" />
+    <link rel="apple-touch-icon" href="/ConflictSimulator/pwa-192x192.png" />
     <title>ConflictSimulator</title>
+    <style>
+      /* iOS safe area insets */
+      :root {
+        --sat: env(safe-area-inset-top);
+        --sab: env(safe-area-inset-bottom);
+        --sal: env(safe-area-inset-left);
+        --sar: env(safe-area-inset-right);
+      }
+      body {
+        padding-top: var(--sat);
+        padding-bottom: var(--sab);
+        padding-left: var(--sal);
+        padding-right: var(--sar);
+      }
+    </style>
   </head>
   <body class="m-0 p-0 bg-gray-900">
     <div id="root"></div>
