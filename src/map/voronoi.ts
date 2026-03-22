@@ -1,7 +1,26 @@
 import { Delaunay } from 'd3-delaunay';
-import type { Point, Region, TerrainType } from '../types';
+import type { Point, Region, TerrainType, ResourceType, ResourceStockpile } from '../types';
 import { SeededRNG } from '../utils/random';
 import { generateLandmask, assignTerrain } from './terrain';
+
+/** Base resource production by terrain type */
+const TERRAIN_RESOURCE_PRODUCTION: Record<string, Partial<ResourceStockpile>> = {
+  plains: { food: 3 },
+  mountains: { metal: 3 },
+  forest: { wood: 3 },
+  coast: { salt: 2, food: 1 },
+  desert: { salt: 2 },
+  ocean: {},
+};
+
+/** Possible bonus deposit resources by terrain (gold is rare everywhere) */
+const BONUS_DEPOSIT_POOL: Record<string, ResourceType[]> = {
+  plains: ['food', 'gold'],
+  mountains: ['metal', 'gold'],
+  forest: ['wood', 'gold'],
+  coast: ['salt', 'food', 'gold'],
+  desert: ['salt', 'gold'],
+};
 
 /**
  * Generate random seed points within bounds.
@@ -101,7 +120,8 @@ export function buildVoronoiMap(
   const landmask = generateLandmask(sites, width, height, seed);
   const terrainTypes = assignTerrain(sites, landmask, neighbors, width, height, seed);
 
-  // Build regions
+  // Build regions with resource production and bonus deposits
+  const depositRng = new SeededRNG(seed + 5000);
   const regions: Region[] = sites.map((site, i) => {
     const cell = voronoi.cellPolygon(i);
     const polygon: Point[] = cell
@@ -112,6 +132,32 @@ export function buildVoronoiMap(
     const basePop: Record<string, number> = {
       plains: 100, forest: 70, mountains: 40, desert: 30, coast: 120, ocean: 0,
     };
+
+    const resourceProduction: Partial<ResourceStockpile> = { ...(TERRAIN_RESOURCE_PRODUCTION[terrain] ?? {}) };
+
+    // 15% chance of bonus deposit (gold only 5%)
+    let bonusResource: ResourceType | undefined;
+    if (terrain !== 'ocean') {
+      const roll = depositRng.next();
+      if (roll < 0.15) {
+        const pool = BONUS_DEPOSIT_POOL[terrain] ?? [];
+        if (pool.length > 0) {
+          // Gold is rare — only pick gold if roll < 0.05
+          if (roll < 0.05 && pool.includes('gold')) {
+            bonusResource = 'gold';
+          } else {
+            const nonGold = pool.filter((r) => r !== 'gold');
+            if (nonGold.length > 0) {
+              bonusResource = nonGold[depositRng.int(0, nonGold.length - 1)];
+            }
+          }
+          if (bonusResource) {
+            resourceProduction[bonusResource] = (resourceProduction[bonusResource] ?? 0) + 2;
+          }
+        }
+      }
+    }
+
     return {
       id: i,
       polygon,
@@ -121,6 +167,8 @@ export function buildVoronoiMap(
       countryId: null,
       population: basePop[terrain] ?? 50,
       fortification: 0,
+      resourceProduction,
+      bonusResource,
     };
   });
 

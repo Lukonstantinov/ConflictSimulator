@@ -119,6 +119,11 @@ export default function CountryPanel() {
               <>
                 {' | '}Treasury: {Math.floor(country.treasury)}
                 {' | '}Armies: {country.activeArmies.length}
+                {country.resources && (
+                  <span className="ml-1 text-gray-500" title={`F:${Math.floor(country.resources.food)} M:${Math.floor(country.resources.metal)} W:${Math.floor(country.resources.wood)} S:${Math.floor(country.resources.salt)} G:${Math.floor(country.resources.gold)}`}>
+                    [F:{Math.floor(country.resources.food)} M:{Math.floor(country.resources.metal)}]
+                  </span>
+                )}
                 {country.activeArmies.length > 0 && (() => {
                   let h = 0, l = 0, v = 0;
                   for (const a of country.activeArmies) {

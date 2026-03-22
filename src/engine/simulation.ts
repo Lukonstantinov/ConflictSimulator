@@ -1,6 +1,6 @@
-import type { Country, Region, Army, SimEvent, StateDelta, VictoryConfig, BorderFront } from '../types';
+import type { Country, Region, Army, SimEvent, StateDelta, VictoryConfig, BorderFront, TradeRoute, ResourceType, ResourceStockpile } from '../types';
 import { SeededRNG } from '../utils/random';
-import { processEconomy, getStrategyUnitMix } from './economy';
+import { processEconomy, getStrategyUnitMix, emptyStockpile, getResourceDeficitPenalty } from './economy';
 import { resolveBattle, resolveBorderCombat, updateMorale, defaultUnits, applyLossesToUnits, getTotalUnits } from './combat';
 import { makeDecisions } from './ai';
 
@@ -9,6 +9,7 @@ export interface SimulationSnapshot {
   countries: Country[];
   tick: number;
   borderFronts: BorderFront[];
+  tradeRoutes: TradeRoute[];
 }
 
 export class SimulationEngine {
@@ -18,6 +19,7 @@ export class SimulationEngine {
   private rng: SeededRNG;
   private victoryConfig: VictoryConfig;
   private borderFronts: BorderFront[] = [];
+  private tradeRoutes: TradeRoute[] = [];
 
   constructor(
     regions: Region[],
@@ -29,6 +31,7 @@ export class SimulationEngine {
       ...r,
       population: r.population ?? 50,
       fortification: r.fortification ?? 0,
+      resourceProduction: r.resourceProduction ?? {},
     }));
     this.countries = countries.map((c) => ({
       ...c,
@@ -39,6 +42,7 @@ export class SimulationEngine {
       relations: { ...c.relations },
       warWeariness: c.warWeariness ?? 0,
       warStartTicks: { ...(c.warStartTicks ?? {}) },
+      resources: c.resources ?? emptyStockpile(),
     }));
     this.tick = 0;
     this.rng = new SeededRNG(seed);
@@ -95,10 +99,13 @@ export class SimulationEngine {
     this.regions = ecoResult.updatedRegions;
     events.push(...ecoResult.events);
 
-    // 2. Supply line attrition: armies far from friendly territory suffer losses
+    // 2. Resource deficit morale penalty
+    this.applyResourceDeficitPenalties();
+
+    // 3. Supply line attrition: armies far from friendly territory suffer losses
     this.applySupplyAttrition();
 
-    // 3. AI decision phase
+    // 4. AI decision phase
     for (let i = 0; i < this.countries.length; i++) {
       const c = this.countries[i];
       if (!c.isAlive) continue;
@@ -146,10 +153,16 @@ export class SimulationEngine {
       }
     }
 
-    // 4. Border Front Combat — resolve ongoing border fronts
+    // 4. Trade Routes — form/break trade routes every 10 ticks
+    if (this.tick % 10 === 0) {
+      this.processTradeRoutes(events);
+    }
+    this.applyTradeRoutes();
+
+    // 5. Border Front Combat — resolve ongoing border fronts
     this.resolveBorderFronts(events, regionChanges);
 
-    // 5. Movement & Combat phase — armies arriving at enemy borders create fronts
+    // 6. Movement & Combat phase — armies arriving at enemy borders create fronts
     for (let i = 0; i < this.countries.length; i++) {
       const country = this.countries[i];
       if (!country.isAlive) continue;
@@ -272,7 +285,7 @@ export class SimulationEngine {
       };
     }
 
-    // 6. Update country region lists & check elimination
+    // 7. Update country region lists & check elimination
     for (let i = 0; i < this.countries.length; i++) {
       const c = this.countries[i];
       if (!c.isAlive) continue;
@@ -304,7 +317,7 @@ export class SimulationEngine {
     // Clean up border fronts for peace treaties
     this.cleanupPeacefulFronts();
 
-    // 7. Check for winner based on victory condition
+    // 8. Check for winner based on victory condition
     const winner = this.checkVictory();
 
     const countryUpdates = this.countries.map((c) => ({
@@ -316,6 +329,7 @@ export class SimulationEngine {
       isAlive: c.isAlive,
       warWeariness: c.warWeariness,
       warStartTicks: c.warStartTicks,
+      resources: c.resources,
     }));
 
     const armyUpdates = this.countries
@@ -331,6 +345,7 @@ export class SimulationEngine {
       eliminatedCountries,
       winner,
       borderFronts: [...this.borderFronts],
+      tradeRoutes: [...this.tradeRoutes],
     };
   }
 
@@ -552,6 +567,176 @@ export class SimulationEngine {
     this.borderFronts = this.borderFronts.filter((f) => !resolvedFronts.includes(f.id));
   }
 
+  /** Apply morale penalty to armies when resources are in deficit */
+  private applyResourceDeficitPenalties(): void {
+    for (let i = 0; i < this.countries.length; i++) {
+      const country = this.countries[i];
+      if (!country.isAlive) continue;
+
+      const resources = country.resources ?? emptyStockpile();
+      const { moralePenalty } = getResourceDeficitPenalty(resources);
+      if (moralePenalty <= 0) continue;
+
+      const updatedArmies = country.activeArmies.map((army) => ({
+        ...army,
+        morale: Math.max(0.3, army.morale - moralePenalty),
+      }));
+      this.countries[i] = { ...this.countries[i], activeArmies: updatedArmies };
+    }
+  }
+
+  /** Form and break trade routes between peaceful nations with complementary surpluses */
+  private processTradeRoutes(events: SimEvent[]): void {
+    const RESOURCE_TYPES: ResourceType[] = ['food', 'metal', 'wood', 'salt', 'gold'];
+
+    // Break trade routes where countries are now at war
+    const toBreak: string[] = [];
+    for (const route of this.tradeRoutes) {
+      const c1 = this.countries.find((c) => c.id === route.country1Id);
+      const c2 = this.countries.find((c) => c.id === route.country2Id);
+      if (!c1 || !c2 || !c1.isAlive || !c2.isAlive) {
+        toBreak.push(route.id);
+        continue;
+      }
+      if (c1.relations[c2.id] === 'at_war') {
+        toBreak.push(route.id);
+        events.push({
+          tick: this.tick,
+          type: 'trade_route_broken',
+          actors: [c1.id, c2.id],
+          details: { country1: c1.name, country2: c2.name, resource: route.resource },
+        });
+      }
+    }
+    this.tradeRoutes = this.tradeRoutes.filter((r) => !toBreak.includes(r.id));
+
+    // Try to form new trade routes (max 3 per country)
+    const routeCountPerCountry = new Map<string, number>();
+    for (const route of this.tradeRoutes) {
+      routeCountPerCountry.set(route.country1Id, (routeCountPerCountry.get(route.country1Id) ?? 0) + 1);
+      routeCountPerCountry.set(route.country2Id, (routeCountPerCountry.get(route.country2Id) ?? 0) + 1);
+    }
+
+    const aliveCountries = this.countries.filter((c) => c.isAlive);
+
+    for (let i = 0; i < aliveCountries.length; i++) {
+      const c1 = aliveCountries[i];
+      if ((routeCountPerCountry.get(c1.id) ?? 0) >= 3) continue;
+
+      for (let j = i + 1; j < aliveCountries.length; j++) {
+        const c2 = aliveCountries[j];
+        if ((routeCountPerCountry.get(c2.id) ?? 0) >= 3) continue;
+
+        // Must be neutral or allied (not at war)
+        if (c1.relations[c2.id] === 'at_war') continue;
+
+        // Already have a trade route?
+        const exists = this.tradeRoutes.some(
+          (r) => (r.country1Id === c1.id && r.country2Id === c2.id) ||
+                 (r.country1Id === c2.id && r.country2Id === c1.id),
+        );
+        if (exists) continue;
+
+        // Find complementary surpluses: c1 has surplus of X, c2 has deficit (or vice versa)
+        const r1 = c1.resources ?? emptyStockpile();
+        const r2 = c2.resources ?? emptyStockpile();
+
+        for (const res of RESOURCE_TYPES) {
+          if (res === 'gold') continue; // Gold not traded
+          if (r1[res] > 5 && r2[res] < 2) {
+            // c1 has surplus, c2 needs it — form route
+            const fromRegion = this.findBorderRegion(c1.id, c2.id);
+            const toRegion = this.findBorderRegion(c2.id, c1.id);
+            if (fromRegion !== null && toRegion !== null) {
+              const route: TradeRoute = {
+                id: `trade-${c1.id}-${c2.id}-${res}-${this.tick}`,
+                country1Id: c1.id,
+                country2Id: c2.id,
+                resource: res,
+                amount: 1,
+                fromRegionId: fromRegion,
+                toRegionId: toRegion,
+              };
+              this.tradeRoutes.push(route);
+              routeCountPerCountry.set(c1.id, (routeCountPerCountry.get(c1.id) ?? 0) + 1);
+              routeCountPerCountry.set(c2.id, (routeCountPerCountry.get(c2.id) ?? 0) + 1);
+              events.push({
+                tick: this.tick,
+                type: 'trade_route_formed',
+                actors: [c1.id, c2.id],
+                details: { country1: c1.name, country2: c2.name, resource: res },
+              });
+              break; // One new route per pair per tick
+            }
+          } else if (r2[res] > 5 && r1[res] < 2) {
+            const fromRegion = this.findBorderRegion(c2.id, c1.id);
+            const toRegion = this.findBorderRegion(c1.id, c2.id);
+            if (fromRegion !== null && toRegion !== null) {
+              const route: TradeRoute = {
+                id: `trade-${c2.id}-${c1.id}-${res}-${this.tick}`,
+                country1Id: c2.id,
+                country2Id: c1.id,
+                resource: res,
+                amount: 1,
+                fromRegionId: fromRegion,
+                toRegionId: toRegion,
+              };
+              this.tradeRoutes.push(route);
+              routeCountPerCountry.set(c1.id, (routeCountPerCountry.get(c1.id) ?? 0) + 1);
+              routeCountPerCountry.set(c2.id, (routeCountPerCountry.get(c2.id) ?? 0) + 1);
+              events.push({
+                tick: this.tick,
+                type: 'trade_route_formed',
+                actors: [c2.id, c1.id],
+                details: { country1: c2.name, country2: c1.name, resource: res },
+              });
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /** Apply trade route resource transfers */
+  private applyTradeRoutes(): void {
+    for (const route of this.tradeRoutes) {
+      const c1Idx = this.countries.findIndex((c) => c.id === route.country1Id);
+      const c2Idx = this.countries.findIndex((c) => c.id === route.country2Id);
+      if (c1Idx < 0 || c2Idx < 0) continue;
+
+      const c1 = this.countries[c1Idx];
+      const c2 = this.countries[c2Idx];
+      if (!c1.isAlive || !c2.isAlive) continue;
+
+      const r1 = { ...(c1.resources ?? emptyStockpile()) };
+      const r2 = { ...(c2.resources ?? emptyStockpile()) };
+
+      // Transfer: country1 sends resource to country2
+      const transferAmt = Math.min(route.amount, Math.max(0, r1[route.resource]));
+      if (transferAmt > 0) {
+        r1[route.resource] -= transferAmt;
+        r2[route.resource] += transferAmt;
+        this.countries[c1Idx] = { ...c1, resources: r1 };
+        this.countries[c2Idx] = { ...c2, resources: r2 };
+      }
+    }
+  }
+
+  /** Find a border region of countryId that is adjacent to otherCountryId */
+  private findBorderRegion(countryId: string, otherCountryId: string): number | null {
+    for (const region of this.regions) {
+      if (region.countryId !== countryId) continue;
+      for (const nId of region.neighbors) {
+        const neighbor = this.regions.find((r) => r.id === nId);
+        if (neighbor && neighbor.countryId === otherCountryId) {
+          return region.id;
+        }
+      }
+    }
+    return null;
+  }
+
   private cleanupPeacefulFronts(): void {
     const toRemove: string[] = [];
 
@@ -649,9 +834,11 @@ export class SimulationEngine {
         activeArmies: c.activeArmies.map((a) => ({ ...a, units: { ...a.units } })),
         relations: { ...c.relations },
         warStartTicks: { ...(c.warStartTicks ?? {}) },
+        resources: { ...(c.resources ?? emptyStockpile()) },
       })),
       tick: this.tick,
       borderFronts: this.borderFronts.map((f) => ({ ...f })),
+      tradeRoutes: this.tradeRoutes.map((t) => ({ ...t })),
     };
   }
 }

@@ -23,9 +23,34 @@ export interface Region {
   countryId: string | null;
   population: number;
   fortification: number;
+  /** Base resource production per tick */
+  resourceProduction: Partial<ResourceStockpile>;
+  /** Bonus deposit resource (rare, assigned at map gen) */
+  bonusResource?: ResourceType;
 }
 
 export type TerrainType = 'plains' | 'mountains' | 'forest' | 'desert' | 'coast' | 'ocean';
+
+export type ResourceType = 'food' | 'metal' | 'wood' | 'salt' | 'gold';
+
+export interface ResourceStockpile {
+  food: number;
+  metal: number;
+  wood: number;
+  salt: number;
+  gold: number;
+}
+
+export interface TradeRoute {
+  id: string;
+  country1Id: string;
+  country2Id: string;
+  resource: ResourceType;
+  amount: number;
+  /** Region path for visualization (from→to) */
+  fromRegionId: number;
+  toRegionId: number;
+}
 
 export type UnitType = 'heavy' | 'light' | 'levy';
 
@@ -50,6 +75,8 @@ export interface Country {
   isAlive: boolean;
   warWeariness: number;
   warStartTicks: Record<string, number>;
+  /** Resource stockpile */
+  resources: ResourceStockpile;
 }
 
 export type StrategyType = 'aggressive' | 'defensive' | 'expansionist' | 'opportunist' | 'turtle';
@@ -92,7 +119,7 @@ export interface SimulationState {
 
 export type SimEventType = 'war_declared' | 'battle' | 'region_captured' | 'country_eliminated'
   | 'alliance_formed' | 'alliance_broken' | 'peace_treaty' | 'fortification_built'
-  | 'border_clash' | 'border_breakthrough';
+  | 'border_clash' | 'border_breakthrough' | 'trade_route_formed' | 'trade_route_broken';
 
 export interface SimEvent {
   tick: number;
@@ -163,4 +190,5 @@ export interface StateDelta {
   eliminatedCountries: string[];
   winner: string | null;
   borderFronts: BorderFront[];
+  tradeRoutes: TradeRoute[];
 }

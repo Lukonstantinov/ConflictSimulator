@@ -23,6 +23,7 @@ export default function SimControls({ victoryConfig, onVictoryConfigChange }: Si
   const recordDelta = useSimStore((s) => s.recordDelta);
   const recordTerritory = useSimStore((s) => s.recordTerritory);
   const setBorderFronts = useSimStore((s) => s.setBorderFronts);
+  const setTradeRoutes = useSimStore((s) => s.setTradeRoutes);
   const reset = useSimStore((s) => s.reset);
 
   const map = useMapStore((s) => s.map);
@@ -58,8 +59,9 @@ export default function SimControls({ victoryConfig, onVictoryConfigChange }: Si
         addEvent(evt);
       }
 
-      // Update border fronts
+      // Update border fronts and trade routes
       setBorderFronts(delta.borderFronts);
+      setTradeRoutes(delta.tradeRoutes);
 
       // Record for replay & stats
       recordDelta(delta);
