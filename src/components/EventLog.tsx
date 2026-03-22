@@ -24,6 +24,10 @@ function formatEvent(event: SimEvent, countries: { id: string; name: string }[])
       return `${getCountryName(event.actors[0], countries)} allied with ${getCountryName(event.actors[1], countries)}`;
     case 'alliance_broken':
       return `Alliance broken: ${getCountryName(event.actors[0], countries)} & ${getCountryName(event.actors[1], countries)}`;
+    case 'peace_treaty':
+      return `Peace treaty: ${d.country1} & ${d.country2} (after ${d.duration} ticks)`;
+    case 'fortification_built':
+      return `${d.countryName} fortified region #${d.region} (level ${d.level})`;
     default:
       return 'Unknown event';
   }
@@ -43,6 +47,10 @@ function eventColor(type: SimEvent['type']): string {
       return 'text-green-400';
     case 'alliance_broken':
       return 'text-yellow-400';
+    case 'peace_treaty':
+      return 'text-cyan-400';
+    case 'fortification_built':
+      return 'text-yellow-500';
     default:
       return 'text-gray-400';
   }

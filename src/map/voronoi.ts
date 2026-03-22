@@ -108,13 +108,19 @@ export function buildVoronoiMap(
       ? cell.slice(0, -1).map(([x, y]) => ({ x, y }))
       : [];
 
+    const terrain = terrainTypes[i] as TerrainType;
+    const basePop: Record<string, number> = {
+      plains: 100, forest: 70, mountains: 40, desert: 30, coast: 120, ocean: 0,
+    };
     return {
       id: i,
       polygon,
       centroid: site,
       neighbors: neighbors[i],
-      terrain: terrainTypes[i] as TerrainType,
+      terrain,
       countryId: null,
+      population: basePop[terrain] ?? 50,
+      fortification: 0,
     };
   });
 

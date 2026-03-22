@@ -49,6 +49,15 @@ export function importMapJSON(json: string): WorldMap | null {
     if (!parsed.id || !parsed.regions || !parsed.countries || !parsed.dimensions) {
       return null;
     }
+    // Backfill new fields for older maps
+    for (const r of parsed.regions) {
+      if (r.population === undefined) r.population = 50;
+      if (r.fortification === undefined) r.fortification = 0;
+    }
+    for (const c of parsed.countries) {
+      if (c.warWeariness === undefined) c.warWeariness = 0;
+      if (c.warStartTicks === undefined) c.warStartTicks = {};
+    }
     return parsed as WorldMap;
   } catch {
     return null;

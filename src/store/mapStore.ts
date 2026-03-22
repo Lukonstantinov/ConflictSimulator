@@ -82,6 +82,8 @@ export const useMapStore = create<MapState>((set, get) => ({
       activeArmies: [],
       relations: {},
       isAlive: true,
+      warWeariness: 0,
+      warStartTicks: {},
     };
 
     set({ map: { ...map, countries: [...map.countries, country] } });

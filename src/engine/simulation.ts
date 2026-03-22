@@ -1,4 +1,4 @@
-import type { Country, Region, Army, SimEvent, StateDelta } from '../types';
+import type { Country, Region, Army, SimEvent, StateDelta, VictoryConfig } from '../types';
 import { SeededRNG } from '../utils/random';
 import { processEconomy } from './economy';
 import { resolveBattle, updateMorale } from './combat';
@@ -15,16 +15,33 @@ export class SimulationEngine {
   private countries: Country[];
   private tick: number;
   private rng: SeededRNG;
+  private victoryConfig: VictoryConfig;
 
-  constructor(regions: Region[], countries: Country[], seed: number) {
-    this.regions = regions.map((r) => ({ ...r }));
+  constructor(
+    regions: Region[],
+    countries: Country[],
+    seed: number,
+    victoryConfig?: VictoryConfig,
+  ) {
+    this.regions = regions.map((r) => ({
+      ...r,
+      population: r.population ?? 50,
+      fortification: r.fortification ?? 0,
+    }));
     this.countries = countries.map((c) => ({
       ...c,
       activeArmies: [...c.activeArmies],
       relations: { ...c.relations },
+      warWeariness: c.warWeariness ?? 0,
+      warStartTicks: { ...(c.warStartTicks ?? {}) },
     }));
     this.tick = 0;
     this.rng = new SeededRNG(seed);
+    this.victoryConfig = victoryConfig ?? {
+      condition: 'conquest',
+      economicThreshold: 5000,
+      territorialPercent: 75,
+    };
 
     // Initialize relations: all neutral if not set
     for (const c of this.countries) {
@@ -65,21 +82,26 @@ export class SimulationEngine {
     const regionChanges: StateDelta['regionChanges'] = [];
     const eliminatedCountries: string[] = [];
 
-    // 1. Economy phase
+    // 1. Economy phase (includes population growth, war weariness, fortification)
     const ecoResult = processEconomy(this.countries, this.regions, this.tick);
     this.countries = ecoResult.updatedCountries;
+    this.regions = ecoResult.updatedRegions;
     events.push(...ecoResult.events);
 
-    // 2. AI decision phase
+    // 2. Supply line attrition: armies far from friendly territory suffer losses
+    this.applySupplyAttrition();
+
+    // 3. AI decision phase
     for (let i = 0; i < this.countries.length; i++) {
       const c = this.countries[i];
       if (!c.isAlive) continue;
 
       const aiResult = makeDecisions(c, this.countries, this.regions, this.tick, this.rng);
       this.countries[i] = aiResult.updatedCountry;
+      this.regions = aiResult.updatedRegions;
       events.push(...aiResult.events);
 
-      // Sync war declarations to be bidirectional
+      // Sync war declarations and peace treaties to be bidirectional
       for (const evt of aiResult.events) {
         if (evt.type === 'war_declared') {
           const targetId = evt.actors[1];
@@ -91,13 +113,33 @@ export class SimulationEngine {
                 ...this.countries[targetIdx].relations,
                 [c.id]: 'at_war',
               },
+              warStartTicks: {
+                ...this.countries[targetIdx].warStartTicks,
+                [c.id]: this.tick,
+              },
+            };
+          }
+        }
+        if (evt.type === 'peace_treaty') {
+          const targetId = evt.actors[1];
+          const targetIdx = this.countries.findIndex((cc) => cc.id === targetId);
+          if (targetIdx >= 0) {
+            const newWarStartTicks = { ...this.countries[targetIdx].warStartTicks };
+            delete newWarStartTicks[c.id];
+            this.countries[targetIdx] = {
+              ...this.countries[targetIdx],
+              relations: {
+                ...this.countries[targetIdx].relations,
+                [c.id]: 'neutral',
+              },
+              warStartTicks: newWarStartTicks,
             };
           }
         }
       }
     }
 
-    // 3. Movement & Combat phase
+    // 4. Movement & Combat phase
     for (let i = 0; i < this.countries.length; i++) {
       const country = this.countries[i];
       if (!country.isAlive) continue;
@@ -137,7 +179,7 @@ export class SimulationEngine {
                 };
               }
 
-              const result = resolveBattle(arrivedArmy, defArmy, targetRegion.terrain, this.rng);
+              const result = resolveBattle(arrivedArmy, defArmy, targetRegion, this.rng);
 
               events.push({
                 tick: this.tick,
@@ -157,7 +199,12 @@ export class SimulationEngine {
                 // Attacker captures region
                 const regionIdx = this.regions.findIndex((r) => r.id === targetRegion.id);
                 if (regionIdx >= 0) {
-                  this.regions[regionIdx] = { ...this.regions[regionIdx], countryId: country.id };
+                  // Reduce fortification on capture
+                  this.regions[regionIdx] = {
+                    ...this.regions[regionIdx],
+                    countryId: country.id,
+                    fortification: Math.max(0, this.regions[regionIdx].fortification - 1),
+                  };
                   regionChanges.push({ regionId: targetRegion.id, countryId: country.id });
                 }
 
@@ -174,7 +221,7 @@ export class SimulationEngine {
 
                 // Update attacker army
                 if (result.attackerRemaining > 0) {
-                  processedArmies.push(updateMorale({ ...arrivedArmy, size: result.attackerRemaining }, true));
+                  processedArmies.push(updateMorale({ ...arrivedArmy, size: result.attackerRemaining }, true, country.warWeariness));
                 }
 
                 // Update defender armies — remove destroyed garrison
@@ -193,6 +240,7 @@ export class SimulationEngine {
                         updateMorale(
                           { ...defArmy!, size: result.defenderRemaining, position: retreatTo.id, target: null, progress: 0 },
                           false,
+                          defender.warWeariness,
                         ),
                       );
                     }
@@ -205,12 +253,12 @@ export class SimulationEngine {
               } else {
                 // Attacker repelled
                 if (result.attackerRemaining > 0) {
-                  processedArmies.push(updateMorale({ ...arrivedArmy, size: result.attackerRemaining, position: army.position }, false));
+                  processedArmies.push(updateMorale({ ...arrivedArmy, size: result.attackerRemaining, position: army.position }, false, country.warWeariness));
                 }
                 // Update defending army size
                 if (defenderIdx >= 0 && result.defenderRemaining > 0) {
                   const defArmies = this.countries[defenderIdx].activeArmies.map((a) =>
-                    a.id === defArmy!.id ? updateMorale({ ...a, size: result.defenderRemaining }, true) : a,
+                    a.id === defArmy!.id ? updateMorale({ ...a, size: result.defenderRemaining }, true, defender.warWeariness) : a,
                   );
                   this.countries[defenderIdx] = {
                     ...this.countries[defenderIdx],
@@ -252,7 +300,7 @@ export class SimulationEngine {
       };
     }
 
-    // 4. Update country region lists & check elimination
+    // 5. Update country region lists & check elimination
     for (let i = 0; i < this.countries.length; i++) {
       const c = this.countries[i];
       if (!c.isAlive) continue;
@@ -276,9 +324,8 @@ export class SimulationEngine {
       }
     }
 
-    // 5. Check for winner
-    const aliveCountries = this.countries.filter((c) => c.isAlive);
-    const winner = aliveCountries.length === 1 ? aliveCountries[0].id : null;
+    // 6. Check for winner based on victory condition
+    const winner = this.checkVictory();
 
     const countryUpdates = this.countries.map((c) => ({
       id: c.id,
@@ -287,6 +334,8 @@ export class SimulationEngine {
       activeArmies: c.activeArmies,
       relations: c.relations,
       isAlive: c.isAlive,
+      warWeariness: c.warWeariness,
+      warStartTicks: c.warStartTicks,
     }));
 
     const armyUpdates = this.countries
@@ -304,6 +353,65 @@ export class SimulationEngine {
     };
   }
 
+  private applySupplyAttrition(): void {
+    for (let i = 0; i < this.countries.length; i++) {
+      const country = this.countries[i];
+      if (!country.isAlive) continue;
+
+      const ownedSet = new Set(country.regions);
+
+      const updatedArmies = country.activeArmies.map((army) => {
+        // If army is in friendly territory, no attrition
+        if (ownedSet.has(army.position)) return army;
+
+        // Check how far from friendly territory (simple: is any neighbor friendly?)
+        const currentRegion = this.regions.find((r) => r.id === army.position);
+        if (!currentRegion) return army;
+
+        const hasNearbySupply = currentRegion.neighbors.some((nId) => ownedSet.has(nId));
+
+        if (!hasNearbySupply) {
+          // Deep in enemy territory: suffer attrition
+          const attrition = Math.max(1, Math.floor(army.size * 0.02));
+          return {
+            ...army,
+            size: Math.max(1, army.size - attrition),
+            morale: Math.max(0.3, army.morale - 0.01),
+          };
+        }
+
+        return army;
+      });
+
+      this.countries[i] = { ...this.countries[i], activeArmies: updatedArmies };
+    }
+  }
+
+  private checkVictory(): string | null {
+    const aliveCountries = this.countries.filter((c) => c.isAlive);
+
+    // Conquest: last country standing
+    if (this.victoryConfig.condition === 'conquest') {
+      return aliveCountries.length === 1 ? aliveCountries[0].id : null;
+    }
+
+    // Economic: first to accumulate threshold treasury
+    if (this.victoryConfig.condition === 'economic') {
+      const winner = aliveCountries.find((c) => c.treasury >= this.victoryConfig.economicThreshold);
+      return winner?.id ?? null;
+    }
+
+    // Territorial: first to control X% of land
+    if (this.victoryConfig.condition === 'territorial') {
+      const totalLand = this.regions.filter((r) => r.terrain !== 'ocean').length;
+      const threshold = Math.floor(totalLand * (this.victoryConfig.territorialPercent / 100));
+      const winner = aliveCountries.find((c) => c.regions.length >= threshold);
+      return winner?.id ?? null;
+    }
+
+    return aliveCountries.length === 1 ? aliveCountries[0].id : null;
+  }
+
   getSnapshot(): SimulationSnapshot {
     return {
       regions: this.regions.map((r) => ({ ...r })),
@@ -311,6 +419,7 @@ export class SimulationEngine {
         ...c,
         activeArmies: [...c.activeArmies],
         relations: { ...c.relations },
+        warStartTicks: { ...(c.warStartTicks ?? {}) },
       })),
       tick: this.tick,
     };

@@ -1,4 +1,4 @@
-import type { Army, BattleResult, TerrainType } from '../types';
+import type { Army, BattleResult, Region, TerrainType } from '../types';
 import { SeededRNG } from '../utils/random';
 
 const TERRAIN_MODIFIERS: Record<TerrainType, number> = {
@@ -10,20 +10,35 @@ const TERRAIN_MODIFIERS: Record<TerrainType, number> = {
   ocean: 0.5,
 };
 
+const TERRAIN_SPEED: Record<TerrainType, number> = {
+  plains: 0.25,
+  coast: 0.25,
+  desert: 0.20,
+  forest: 0.20,
+  mountains: 0.15,
+  ocean: 0.10,
+};
+
 const DEFENDER_BONUS = 1.1;
+const FORTIFICATION_BONUS = 0.15;
+
+export function getTerrainSpeed(terrain: TerrainType): number {
+  return TERRAIN_SPEED[terrain] ?? 0.25;
+}
 
 export function resolveBattle(
   attacker: Army,
   defender: Army,
-  terrain: TerrainType,
+  region: Region,
   rng: SeededRNG,
 ): BattleResult {
-  const terrainMod = TERRAIN_MODIFIERS[terrain] ?? 1.0;
+  const terrainMod = TERRAIN_MODIFIERS[region.terrain] ?? 1.0;
+  const fortBonus = 1 + (region.fortification ?? 0) * FORTIFICATION_BONUS;
 
   const attackPower =
     attacker.size * attacker.morale * terrainMod * rng.range(0.8, 1.2);
   const defendPower =
-    defender.size * defender.morale * DEFENDER_BONUS * rng.range(0.85, 1.15);
+    defender.size * defender.morale * DEFENDER_BONUS * fortBonus * rng.range(0.85, 1.15);
 
   const ratio = attackPower / defendPower;
 
@@ -40,8 +55,9 @@ export function resolveBattle(
   };
 }
 
-export function updateMorale(army: Army, won: boolean): Army {
+export function updateMorale(army: Army, won: boolean, warWeariness: number = 0): Army {
   const delta = won ? 0.05 : -0.1;
-  const newMorale = Math.max(0.3, Math.min(1.5, army.morale + delta));
+  const wearinessPenalty = warWeariness * -0.02;
+  const newMorale = Math.max(0.3, Math.min(1.5, army.morale + delta + wearinessPenalty));
   return { ...army, morale: newMorale };
 }

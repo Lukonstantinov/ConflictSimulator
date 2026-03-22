@@ -105,6 +105,44 @@ A browser-based (PWA, iOS-optimized) fantasy war simulator where users generate 
 
 ---
 
+## Phase 7 — Population & Warfare Mechanics
+
+**Goal:** Deeper strategic gameplay with population, supply, fortifications, and war weariness.
+
+- [x] Region population system: terrain-based growth (logistic), population caps
+- [x] Army recruitment depletes population (cost = size × 0.5)
+- [x] Population contributes to regional income (+0.02 per pop)
+- [x] Terrain movement speed modifiers (plains=0.25, mountains=0.15, forest=0.20)
+- [x] Supply line attrition: armies deep in enemy territory lose troops each tick
+- [x] War weariness: prolonged wars reduce economy (-15% max) and morale
+- [x] War weariness reduces willingness to declare new wars
+- [x] Fortification system: AI auto-builds forts on border regions (cost: 50 gold)
+- [x] Fortification defense bonus (+15% per level, max 3)
+- [x] Fortification reduced on capture (-1 level)
+- [x] Peace treaty AI: war-weary nations negotiate peace after 50+ ticks
+
+**Deliverable:** Strategic depth with resource management and logistics.
+
+---
+
+## Phase 8 — Scenarios, Timeline Replay & Victory Conditions
+
+**Goal:** Replayability, varied game modes, and polish.
+
+- [x] 6 preset scenarios (Two Empires, Battle Royale, Economic Race, Land Grab, World War, The Underdog)
+- [x] Scenario auto-assigns regions evenly to countries
+- [x] Victory conditions: conquest (last standing), economic (5000 gold), territorial (75% land)
+- [x] Timeline replay scrubber: tick-by-tick navigation with step controls
+- [x] Territory snapshot display during replay
+- [x] Toast notification system for major events (war declarations, eliminations, alliances, peace)
+- [x] Updated stats dashboard with peace treaties and fortifications count
+- [x] Region tooltip shows population and fortification level
+- [x] Stats overlay shows war weariness, population, fortification total
+
+**Deliverable:** Multiple game modes, full replay capability, polished UX.
+
+---
+
 ## Data Models
 
 ```typescript
@@ -119,6 +157,7 @@ interface Region {
   id: number; polygon: Point[]; centroid: Point;
   neighbors: number[]; terrain: TerrainType;
   countryId: string | null;
+  population: number; fortification: number;
 }
 
 interface Country {
@@ -127,6 +166,7 @@ interface Country {
   armySize: number; economy: number; strategy: StrategyType;
   treasury: number; activeArmies: Army[];
   relations: Record<string, Relation>; isAlive: boolean;
+  warWeariness: number; warStartTicks: Record<string, number>;
 }
 
 interface Army {
@@ -143,7 +183,7 @@ type Relation = 'neutral' | 'hostile' | 'allied' | 'at_war';
 
 ```
 attackPower = army_size × morale × terrain_modifier × random(0.8, 1.2)
-defendPower = army_size × morale × 1.1 × random(0.85, 1.15)
+defendPower = army_size × morale × 1.1 × fortification_bonus × random(0.85, 1.15)
 ratio = attackPower / defendPower
 attackerLosses = defender_size × (1/ratio) × 0.3
 defenderLosses = attacker_size × ratio × 0.25
@@ -159,5 +199,7 @@ defenderLosses = attacker_size × ratio × 0.25
 | 4 — Intervention | 1.5 weeks |
 | 5 — PWA/Mobile | 1 week |
 | 6 — Advanced | Ongoing |
+| 7 — Population & Warfare | 1 week |
+| 8 — Scenarios & Replay | 1 week |
 
 **MVP (Phases 1-4): ~8 weeks**

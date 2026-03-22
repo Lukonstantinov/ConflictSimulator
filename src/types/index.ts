@@ -21,6 +21,8 @@ export interface Region {
   neighbors: number[];
   terrain: TerrainType;
   countryId: string | null;
+  population: number;
+  fortification: number;
 }
 
 export type TerrainType = 'plains' | 'mountains' | 'forest' | 'desert' | 'coast' | 'ocean';
@@ -38,6 +40,8 @@ export interface Country {
   activeArmies: Army[];
   relations: Record<string, Relation>;
   isAlive: boolean;
+  warWeariness: number;
+  warStartTicks: Record<string, number>;
 }
 
 export type StrategyType = 'aggressive' | 'defensive' | 'expansionist' | 'opportunist' | 'turtle';
@@ -61,9 +65,12 @@ export interface SimulationState {
   winner: string | null;
 }
 
+export type SimEventType = 'war_declared' | 'battle' | 'region_captured' | 'country_eliminated'
+  | 'alliance_formed' | 'alliance_broken' | 'peace_treaty' | 'fortification_built';
+
 export interface SimEvent {
   tick: number;
-  type: 'war_declared' | 'battle' | 'region_captured' | 'country_eliminated' | 'alliance_formed' | 'alliance_broken';
+  type: SimEventType;
   actors: string[];
   details: Record<string, unknown>;
 }
@@ -86,6 +93,29 @@ export interface SimulationSnapshot {
   regions: Region[];
   countries: Country[];
   tick: number;
+}
+
+export type VictoryCondition = 'conquest' | 'economic' | 'territorial';
+
+export interface VictoryConfig {
+  condition: VictoryCondition;
+  economicThreshold: number;
+  territorialPercent: number;
+}
+
+export interface Scenario {
+  id: string;
+  name: string;
+  description: string;
+  regionCount: number;
+  countries: Array<{
+    name: string;
+    strategy: StrategyType;
+    armySize: number;
+    economy: number;
+  }>;
+  autoAssign: boolean;
+  victoryCondition: VictoryCondition;
 }
 
 export interface WorkerMessage {
