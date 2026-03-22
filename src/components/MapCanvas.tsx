@@ -4,6 +4,7 @@ import { useMapStore } from '../store/mapStore';
 import { useUIStore } from '../store/uiStore';
 
 export default function MapCanvas() {
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<MapRenderer | null>(null);
   const map = useMapStore((s) => s.map);
@@ -56,10 +57,12 @@ export default function MapCanvas() {
   }, [map, toolMode, selectedCountryId, selectRegion, assignRegionToCountry]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="w-full h-full block"
-      style={{ touchAction: 'none' }}
-    />
+    <div ref={containerRef} className="w-full h-full overflow-hidden">
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full block"
+        style={{ touchAction: 'none', objectFit: 'contain' }}
+      />
+    </div>
   );
 }
