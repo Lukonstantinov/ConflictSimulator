@@ -1,7 +1,7 @@
 import type { Country, Region, Army, SimEvent, StrategyType } from '../types';
 import { SeededRNG } from '../utils/random';
-import { canAffordArmy, spawnArmy } from './economy';
-import { getTerrainSpeed } from './combat';
+import { canAffordArmy, spawnArmy, getStrategyUnitMix } from './economy';
+import { getArmySpeed } from './combat';
 
 interface AIAction {
   updatedCountry: Country;
@@ -248,7 +248,10 @@ function spawnArmies(
       break;
   }
 
-  if (shouldSpawn && canAffordArmy(updated, baseSize)) {
+  // Get strategy-preferred unit composition
+  const units = getStrategyUnitMix(strategy, baseSize);
+
+  if (shouldSpawn && canAffordArmy(updated, units)) {
     // Spawn from a border region (one that has enemy neighbors) with sufficient population
     const borderRegions = ownedRegions.filter((r) =>
       r.population >= baseSize * 0.3 &&
@@ -262,7 +265,7 @@ function spawnArmies(
       ? borderRegions[rng.int(0, borderRegions.length - 1)]
       : ownedRegions[rng.int(0, ownedRegions.length - 1)];
 
-    updated = spawnArmy(updated, spawnRegion.id, baseSize, updatedRegions);
+    updated = spawnArmy(updated, spawnRegion.id, units, updatedRegions);
     // Update the region's population in our local copy
     const regionIdx = updatedRegions.findIndex((r) => r.id === spawnRegion.id);
     if (regionIdx >= 0) {
@@ -290,10 +293,13 @@ function moveArmies(
   );
 
   const updatedArmies = country.activeArmies.map((army) => {
-    // If army is moving, continue movement with terrain-based speed
+    // If army is engaged at a border front, don't move it
+    if (army.borderFrontId) return army;
+
+    // If army is moving, continue movement with unit-type-based speed
     if (army.target !== null && army.progress < 1) {
       const targetRegion = regions.find((r) => r.id === army.target);
-      const speed = targetRegion ? getTerrainSpeed(targetRegion.terrain) : 0.25;
+      const speed = targetRegion ? getArmySpeed(army, targetRegion.terrain) : 0.25;
       return { ...army, progress: Math.min(1, army.progress + speed) };
     }
 

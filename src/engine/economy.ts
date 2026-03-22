@@ -1,4 +1,5 @@
-import type { Country, Region, SimEvent } from '../types';
+import type { Country, Region, SimEvent, StrategyType, UnitComposition } from '../types';
+import { UNIT_SPAWN_COST, getTotalUnits } from './combat';
 
 const TERRAIN_INCOME: Record<string, number> = {
   plains: 3,
@@ -35,6 +36,56 @@ const MAX_FORTIFICATION = 3;
 const WAR_WEARINESS_RATE = 0.002;
 const WAR_WEARINESS_DECAY = 0.001;
 const WAR_WEARINESS_ECON_PENALTY = 0.15;
+
+/** Get the preferred unit composition for a strategy */
+export function getStrategyUnitMix(strategy: StrategyType, totalSize: number): UnitComposition {
+  switch (strategy) {
+    case 'aggressive':
+      // 50% heavy, 30% light, 20% levy
+      return {
+        heavy: Math.floor(totalSize * 0.5),
+        light: Math.floor(totalSize * 0.3),
+        levy: totalSize - Math.floor(totalSize * 0.5) - Math.floor(totalSize * 0.3),
+      };
+    case 'expansionist':
+      // 20% heavy, 60% light, 20% levy
+      return {
+        heavy: Math.floor(totalSize * 0.2),
+        light: Math.floor(totalSize * 0.6),
+        levy: totalSize - Math.floor(totalSize * 0.2) - Math.floor(totalSize * 0.6),
+      };
+    case 'opportunist':
+      // 30% heavy, 40% light, 30% levy
+      return {
+        heavy: Math.floor(totalSize * 0.3),
+        light: Math.floor(totalSize * 0.4),
+        levy: totalSize - Math.floor(totalSize * 0.3) - Math.floor(totalSize * 0.4),
+      };
+    case 'defensive':
+      // 40% heavy, 30% light, 30% levy
+      return {
+        heavy: Math.floor(totalSize * 0.4),
+        light: Math.floor(totalSize * 0.3),
+        levy: totalSize - Math.floor(totalSize * 0.4) - Math.floor(totalSize * 0.3),
+      };
+    case 'turtle':
+      // 20% heavy, 20% light, 60% levy (cheap)
+      return {
+        heavy: Math.floor(totalSize * 0.2),
+        light: Math.floor(totalSize * 0.2),
+        levy: totalSize - Math.floor(totalSize * 0.2) - Math.floor(totalSize * 0.2),
+      };
+  }
+}
+
+/** Calculate spawn cost for a unit composition */
+export function getSpawnCost(units: UnitComposition): number {
+  return (
+    units.heavy * UNIT_SPAWN_COST.heavy +
+    units.light * UNIT_SPAWN_COST.light +
+    units.levy * UNIT_SPAWN_COST.levy
+  );
+}
 
 export function processEconomy(
   countries: Country[],
@@ -81,10 +132,13 @@ export function processEconomy(
 
     income *= 1 - (warWeariness * WAR_WEARINESS_ECON_PENALTY);
 
-    // War upkeep: active armies cost money
+    // War upkeep: active armies cost money — heavier units cost more
     const armyUpkeep = country.activeArmies.length * WAR_UPKEEP_PER_ARMY;
-    const totalArmySize = country.activeArmies.reduce((sum, a) => sum + a.size, 0);
-    const sizeUpkeep = totalArmySize * 0.02;
+    let sizeUpkeep = 0;
+    for (const army of country.activeArmies) {
+      const units = army.units ?? { heavy: 0, light: army.size, levy: 0 };
+      sizeUpkeep += units.heavy * 0.04 + units.light * 0.02 + units.levy * 0.01;
+    }
 
     const netIncome = income - armyUpkeep - sizeUpkeep;
     const newTreasury = Math.max(0, country.treasury + netIncome);
@@ -148,29 +202,36 @@ export function processEconomy(
   return { updatedCountries, updatedRegions, events };
 }
 
-export function canAffordArmy(country: Country, size: number): boolean {
-  return country.treasury >= size * 2;
+export function canAffordArmy(country: Country, units: UnitComposition): boolean {
+  return country.treasury >= getSpawnCost(units);
 }
 
-export function spawnArmy(country: Country, regionId: number, size: number, regions: Region[]): Country {
+export function spawnArmy(
+  country: Country,
+  regionId: number,
+  units: UnitComposition,
+  regions: Region[],
+): Country {
+  const totalSize = getTotalUnits(units);
   // Recruitment depletes population
   const region = regions.find((r) => r.id === regionId);
   if (region) {
-    region.population = Math.max(0, region.population - size * 0.5);
+    region.population = Math.max(0, region.population - totalSize * 0.5);
   }
 
   const army = {
     id: `${country.id}-army-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    size,
+    size: totalSize,
     position: regionId,
-    target: null,
+    target: null as number | null,
     morale: 1.0,
     progress: 0,
+    units,
   };
 
   return {
     ...country,
-    treasury: country.treasury - size * 2,
+    treasury: country.treasury - getSpawnCost(units),
     activeArmies: [...country.activeArmies, army],
   };
 }

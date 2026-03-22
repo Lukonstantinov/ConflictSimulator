@@ -2,7 +2,7 @@
 
 ## Project: ConflictSimulator — Fantasy War Simulator
 
-### Version: 1.8.0
+### Version: 2.0.0
 
 A browser-based (PWA, iOS-optimized) fantasy war simulator with Voronoi-based world maps, configurable countries, and real-time war simulation.
 
@@ -181,7 +181,9 @@ uiContainer (fixed)
 Key interfaces:
 - `Region` — id, polygon[], centroid, neighbors[], terrain, countryId, population, fortification
 - `Country` — id, name, color, regions[], capital, armySize, economy, strategy, treasury, activeArmies[], relations, warWeariness
-- `Army` — id, size, position (regionId), target (regionId|null), morale, progress
+- `Army` — id, size, position (regionId), target (regionId|null), morale, progress, units (UnitComposition), borderFrontId?
+- `UnitComposition` — heavy, light, levy (troop counts per type)
+- `BorderFront` — id, attackerRegionId, defenderRegionId, attackerCountryId, defenderCountryId, attackerArmyId, defenderArmyId, frontPosition (0→1)
 - `SimEvent` — type, tick, data (typed union per event type)
 - `StateDelta` — tick, regionChanges[], countryUpdates[], armyUpdates[], events[], winner
 - `VictoryCondition` — 'conquest' | 'economic' | 'territorial'
@@ -228,23 +230,6 @@ Six preset scenarios, each configures `regionCount`, country array, and `Victory
 
 ## Planned Features (Not Yet Implemented)
 
-### Phase 9 — Multi-Type Units & Shield Icons (v1.9.0)
-- Three unit types per army: **Heavy** (1.5× atk/def, expensive), **Light** (1× baseline), **Levy** (0.6× cheap)
-- Spawn cost: Heavy=5/troop, Light=3/troop, Levy=1/troop
-- Movement speed by unit: Heavy=0.15/tick, Light=0.25/tick, Levy=0.20/tick
-- AI strategy preference: aggressive→heavy, expansionist→light, turtle→levy
-- PixiJS shield shapes: pentagon=Heavy, diamond=Light, circle=Levy; country color fill + H/L/V letter
-- Unit type shown in CountryPanel and StatsOverlay
-
-### Phase 10 — Border Combat with Push Mechanic (v2.0.0)
-- Armies stop at contested borders instead of teleporting through regions
-- `BorderFront` object per contested edge: tracks attacker, defender, `frontPosition` (0→1)
-- Each tick: combat power calculated → `frontDelta = (ratio - 1) × 0.02` applied to front
-- Losses are small per-tick (sustained combat) not single-resolve
-- Region captured when frontPosition ≥ 1.0
-- Visual: contested edge rendered as gradient (attacker→defender color) with front marker
-- Armies rendered at their side of the border, not at centroids
-
 ### Phase 11 — Resources & Trade Routes (v2.1.0)
 - Five resource types: **food, metal, wood, salt, gold**
 - Terrain base production: Plains→food, Mountains→metal, Forest→wood, Coast→salt+food, Desert→salt
@@ -268,6 +253,7 @@ npx tsc --noEmit   # Type check
 ---
 
 ## Changelog
+- **2.0.0** — Phase 9 & 10 Multi-Type Units & Border Combat: three unit types per army (Heavy 1.5× combat/pentagon, Light 1× baseline/diamond, Levy 0.6× cheap/circle), strategy-based unit mix (aggressive→heavy, expansionist→light, turtle→levy), unit-type spawn costs (Heavy=5, Light=3, Levy=1), army speed limited by slowest unit type, shield-shaped PixiJS markers with H/L/V labels, unit breakdown in CountryPanel and StatsOverlay; border front combat system with push mechanic (armies stop at contested borders, sustained per-tick combat with frontDelta=(ratio-1)×0.02), BorderFront visual overlay with gradient lines and front position marker, region captured on breakthrough (frontPosition≥1.0), defender retreat/garrison mechanics, peace treaty front cleanup
 - **1.8.0** — Phase 8 Scenarios & Replay: 6 preset scenarios (Two Empires, Battle Royale, Economic Race, Land Grab, World War, The Underdog), timeline replay scrubber with tick-by-tick navigation, victory conditions (conquest/economic/territorial), toast notification system for major events
 - **1.7.0** — Phase 7 Population & Warfare: region population system (growth, recruitment, income), terrain movement speed modifiers, supply line attrition for deep-territory armies, war weariness mechanic (economic/morale penalty), fortification system (AI auto-builds, defense bonus, reduced on capture), peace treaty AI (war-weary nations negotiate peace), combat fortification bonus
 - **1.6.0** — Phase 6 Advanced Features: procedural fantasy country name generator, diplomacy AI (alliance formation/betrayal based on threat assessment), replay history recording, post-war statistics dashboard (battle records, territory charts), map export/import (JSON)

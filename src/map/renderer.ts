@@ -1,7 +1,7 @@
 import * as PIXI from 'pixi.js';
-import type { Region, Country, BattleEffect } from '../types';
+import type { Region, Country, BattleEffect, BorderFront } from '../types';
 import { hslToHex, TERRAIN_COLORS } from '../utils/colors';
-import { ArmyOverlay, BattleEffectSystem, Minimap } from './animation';
+import { ArmyOverlay, BattleEffectSystem, BorderFrontOverlay, Minimap } from './animation';
 
 const TERRAIN_PATTERNS: Record<string, (gfx: PIXI.Graphics, cx: number, cy: number) => void> = {
   mountains: (gfx, cx, cy) => {
@@ -57,6 +57,7 @@ export class MapRenderer {
   // Overlays
   private armyOverlay: ArmyOverlay;
   private battleEffects: BattleEffectSystem;
+  private borderFrontOverlay: BorderFrontOverlay;
   private minimap: Minimap;
   private animFrameId: number | null = null;
 
@@ -85,6 +86,7 @@ export class MapRenderer {
     // Overlays
     this.armyOverlay = new ArmyOverlay(this.worldContainer);
     this.battleEffects = new BattleEffectSystem(this.worldContainer);
+    this.borderFrontOverlay = new BorderFrontOverlay(this.worldContainer);
     this.minimap = new Minimap(this.uiContainer, width, height, 130);
     this.minimap.setPosition(width - 140, 10);
 
@@ -362,8 +364,9 @@ export class MapRenderer {
   }
 
   /** Update army positions and effects during simulation */
-  updateSimulation(countries: Country[], regions: Region[]): void {
-    this.armyOverlay.update(countries, regions);
+  updateSimulation(countries: Country[], regions: Region[], borderFronts: BorderFront[] = []): void {
+    this.armyOverlay.update(countries, regions, borderFronts);
+    this.borderFrontOverlay.update(borderFronts, regions, countries);
     this.minimap.updateRegions(regions, countries);
   }
 
@@ -398,6 +401,7 @@ export class MapRenderer {
     }
     this.armyOverlay.destroy();
     this.battleEffects.destroy();
+    this.borderFrontOverlay.destroy();
     this.minimap.destroy();
     this.app.destroy(true);
   }

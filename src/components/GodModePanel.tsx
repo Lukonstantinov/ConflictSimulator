@@ -82,9 +82,10 @@ export default function GodModePanel() {
       id: `${country.id}-god-${Date.now()}`,
       size: spawnSize,
       position: spawnRegion,
-      target: null,
+      target: null as number | null,
       morale: 1.0,
       progress: 0,
+      units: { heavy: Math.floor(spawnSize * 0.3), light: Math.floor(spawnSize * 0.4), levy: spawnSize - Math.floor(spawnSize * 0.3) - Math.floor(spawnSize * 0.4) },
     };
 
     updateCountry(spawnCountry, {

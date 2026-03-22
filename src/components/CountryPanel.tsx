@@ -119,6 +119,18 @@ export default function CountryPanel() {
               <>
                 {' | '}Treasury: {Math.floor(country.treasury)}
                 {' | '}Armies: {country.activeArmies.length}
+                {country.activeArmies.length > 0 && (() => {
+                  let h = 0, l = 0, v = 0;
+                  for (const a of country.activeArmies) {
+                    const u = a.units ?? { heavy: 0, light: a.size, levy: 0 };
+                    h += u.heavy; l += u.light; v += u.levy;
+                  }
+                  return (
+                    <span className="ml-1 text-gray-500">
+                      ({h}H/{l}L/{v}V)
+                    </span>
+                  );
+                })()}
                 {!country.isAlive && (
                   <span className="text-red-500 font-bold ml-1">ELIMINATED</span>
                 )}
