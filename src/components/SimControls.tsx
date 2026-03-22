@@ -22,6 +22,7 @@ export default function SimControls({ victoryConfig, onVictoryConfigChange }: Si
   const addEvent = useSimStore((s) => s.addEvent);
   const recordDelta = useSimStore((s) => s.recordDelta);
   const recordTerritory = useSimStore((s) => s.recordTerritory);
+  const setBorderFronts = useSimStore((s) => s.setBorderFronts);
   const reset = useSimStore((s) => s.reset);
 
   const map = useMapStore((s) => s.map);
@@ -56,6 +57,9 @@ export default function SimControls({ victoryConfig, onVictoryConfigChange }: Si
       for (const evt of delta.events) {
         addEvent(evt);
       }
+
+      // Update border fronts
+      setBorderFronts(delta.borderFronts);
 
       // Record for replay & stats
       recordDelta(delta);

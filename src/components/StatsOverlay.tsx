@@ -20,6 +20,15 @@ export default function StatsOverlay() {
     ? (country.activeArmies.reduce((sum, a) => sum + a.morale, 0) / country.activeArmies.length).toFixed(2)
     : 'N/A';
 
+  // Unit type breakdown
+  let totalHeavy = 0, totalLight = 0, totalLevy = 0;
+  for (const army of country.activeArmies) {
+    const units = army.units ?? { heavy: 0, light: army.size, levy: 0 };
+    totalHeavy += units.heavy;
+    totalLight += units.light;
+    totalLevy += units.levy;
+  }
+
   const warsAgainst = Object.entries(country.relations)
     .filter(([, rel]) => rel === 'at_war')
     .map(([id]) => map.countries.find((c) => c.id === id)?.name ?? 'Unknown');
@@ -77,6 +86,16 @@ export default function StatsOverlay() {
           <span className="text-gray-400">Total strength:</span>
           <span>{totalArmyStrength}</span>
         </div>
+        {totalArmyStrength > 0 && (
+          <div className="flex justify-between">
+            <span className="text-gray-400">Units:</span>
+            <span className="text-xs">
+              {totalHeavy > 0 && <span className="text-red-300">{totalHeavy}H </span>}
+              {totalLight > 0 && <span className="text-blue-300">{totalLight}L </span>}
+              {totalLevy > 0 && <span className="text-green-300">{totalLevy}V</span>}
+            </span>
+          </div>
+        )}
         <div className="flex justify-between">
           <span className="text-gray-400">Avg morale:</span>
           <span>{avgMorale}</span>

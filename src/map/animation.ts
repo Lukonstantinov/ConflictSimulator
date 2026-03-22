@@ -1,7 +1,8 @@
 import * as PIXI from 'pixi.js';
-import type { Army, Country, Region, BattleEffect } from '../types';
+import type { Army, BorderFront, Country, Region, BattleEffect, UnitType } from '../types';
+import { getTotalUnits } from '../engine/combat';
 
-/** Draw army markers on the map as circles with size-based radius */
+/** Draw army markers on the map with unit-type shield shapes */
 export class ArmyOverlay {
   private container: PIXI.Container;
   private markers: Map<string, PIXI.Graphics> = new Map();
@@ -13,7 +14,7 @@ export class ArmyOverlay {
     parent.addChild(this.container);
   }
 
-  update(countries: Country[], regions: Region[]): void {
+  update(countries: Country[], regions: Region[], borderFronts: BorderFront[] = []): void {
     const activeIds = new Set<string>();
 
     for (const country of countries) {
@@ -22,8 +23,8 @@ export class ArmyOverlay {
       for (const army of country.activeArmies) {
         activeIds.add(army.id);
 
-        // Calculate interpolated position
-        const pos = this.getArmyPosition(army, regions);
+        // Calculate position — if in border front, position at border edge
+        const pos = this.getArmyPosition(army, regions, borderFronts);
         if (!pos) continue;
 
         let marker = this.markers.get(army.id);
@@ -50,18 +51,26 @@ export class ArmyOverlay {
           this.labels.set(army.id, label);
         }
 
-        // Draw marker
+        // Determine dominant unit type for shield shape
+        const dominantType = this.getDominantUnitType(army);
         const radius = Math.max(4, Math.min(12, Math.sqrt(army.size) * 1.2));
         const color = this.hexFromHsl(country.color);
 
         marker.clear();
-        marker.beginFill(color, 0.9);
         marker.lineStyle(1.5, 0xffffff, 0.8);
-        marker.drawCircle(0, 0, radius);
-        marker.endFill();
+
+        this.drawShieldShape(marker, dominantType, radius, color);
+
+        // Draw unit type letter
+        const letterLabel = this.getUnitLetter(dominantType);
+        // We'll put the letter in a separate small section — use lineStyle for a small mark
+        if (army.size >= 10) {
+          marker.lineStyle(1, 0xffffff, 0.9);
+          // Small dot pattern to indicate type
+        }
 
         // Movement direction indicator
-        if (army.target !== null) {
+        if (army.target !== null && !army.borderFrontId) {
           const targetRegion = regions.find((r) => r.id === army.target);
           if (targetRegion) {
             const dx = targetRegion.centroid.x - pos.x;
@@ -80,7 +89,8 @@ export class ArmyOverlay {
         marker.x = pos.x;
         marker.y = pos.y;
 
-        label.text = String(army.size);
+        // Show size + unit letter in label
+        label.text = `${army.size}${letterLabel}`;
         label.x = pos.x;
         label.y = pos.y - radius - 7;
       }
@@ -102,7 +112,101 @@ export class ArmyOverlay {
     }
   }
 
-  private getArmyPosition(army: Army, regions: Region[]): { x: number; y: number } | null {
+  private drawShieldShape(gfx: PIXI.Graphics, type: UnitType, radius: number, color: number): void {
+    gfx.beginFill(color, 0.9);
+
+    switch (type) {
+      case 'heavy':
+        // Pentagon shield
+        this.drawPentagon(gfx, radius);
+        break;
+      case 'light':
+        // Diamond
+        this.drawDiamond(gfx, radius);
+        break;
+      case 'levy':
+        // Circle (default)
+        gfx.drawCircle(0, 0, radius);
+        break;
+    }
+
+    gfx.endFill();
+  }
+
+  private drawPentagon(gfx: PIXI.Graphics, radius: number): void {
+    const points: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+      points.push(Math.cos(angle) * radius, Math.sin(angle) * radius);
+    }
+    gfx.drawPolygon(points);
+  }
+
+  private drawDiamond(gfx: PIXI.Graphics, radius: number): void {
+    gfx.drawPolygon([
+      0, -radius,
+      radius * 0.7, 0,
+      0, radius,
+      -radius * 0.7, 0,
+    ]);
+  }
+
+  private getDominantUnitType(army: Army): UnitType {
+    const units = army.units ?? { heavy: 0, light: army.size, levy: 0 };
+    if (units.heavy >= units.light && units.heavy >= units.levy) return 'heavy';
+    if (units.light >= units.levy) return 'light';
+    return 'levy';
+  }
+
+  private getUnitLetter(type: UnitType): string {
+    switch (type) {
+      case 'heavy': return 'H';
+      case 'light': return 'L';
+      case 'levy': return 'V';
+    }
+  }
+
+  private getArmyPosition(
+    army: Army,
+    regions: Region[],
+    borderFronts: BorderFront[],
+  ): { x: number; y: number } | null {
+    // If army is at a border front, position it at the border edge
+    if (army.borderFrontId) {
+      const front = borderFronts.find((f) => f.id === army.borderFrontId);
+      if (front) {
+        const attackerRegion = regions.find((r) => r.id === front.attackerRegionId);
+        const defenderRegion = regions.find((r) => r.id === front.defenderRegionId);
+        if (attackerRegion && defenderRegion) {
+          const isAttacker = army.id === front.attackerArmyId;
+          // Position armies at border edge, offset by front position
+          const midX = (attackerRegion.centroid.x + defenderRegion.centroid.x) / 2;
+          const midY = (attackerRegion.centroid.y + defenderRegion.centroid.y) / 2;
+          const dx = defenderRegion.centroid.x - attackerRegion.centroid.x;
+          const dy = defenderRegion.centroid.y - attackerRegion.centroid.y;
+          const len = Math.sqrt(dx * dx + dy * dy) || 1;
+          const nx = dx / len;
+          const ny = dy / len;
+
+          if (isAttacker) {
+            // Attacker side: starts at attacker centroid, pushed toward border
+            const t = 0.3 + front.frontPosition * 0.4;
+            return {
+              x: attackerRegion.centroid.x + dx * t,
+              y: attackerRegion.centroid.y + dy * t,
+            };
+          } else {
+            // Defender side: starts at defender centroid, pushed back
+            const t = 0.7 + front.frontPosition * 0.2;
+            return {
+              x: attackerRegion.centroid.x + dx * t,
+              y: attackerRegion.centroid.y + dy * t,
+            };
+          }
+        }
+      }
+    }
+
     const currentRegion = regions.find((r) => r.id === army.position);
     if (!currentRegion) return null;
 
@@ -205,6 +309,120 @@ export class BattleEffectSystem {
       gfx.scale.set(1 + t * 1.5);
       return true;
     });
+  }
+
+  destroy(): void {
+    this.container.destroy({ children: true });
+  }
+}
+
+/** Border front visual rendering — gradient lines on contested edges */
+export class BorderFrontOverlay {
+  private container: PIXI.Container;
+  private frontGraphics: Map<string, PIXI.Graphics> = new Map();
+
+  constructor(parent: PIXI.Container) {
+    this.container = new PIXI.Container();
+    this.container.sortableChildren = true;
+    this.container.zIndex = 5;
+    parent.addChild(this.container);
+  }
+
+  update(borderFronts: BorderFront[], regions: Region[], countries: Country[]): void {
+    const activeFrontIds = new Set(borderFronts.map((f) => f.id));
+
+    // Remove stale fronts
+    for (const [id, gfx] of this.frontGraphics) {
+      if (!activeFrontIds.has(id)) {
+        this.container.removeChild(gfx);
+        gfx.destroy();
+        this.frontGraphics.delete(id);
+      }
+    }
+
+    for (const front of borderFronts) {
+      const attackerRegion = regions.find((r) => r.id === front.attackerRegionId);
+      const defenderRegion = regions.find((r) => r.id === front.defenderRegionId);
+      const attackerCountry = countries.find((c) => c.id === front.attackerCountryId);
+      const defenderCountry = countries.find((c) => c.id === front.defenderCountryId);
+
+      if (!attackerRegion || !defenderRegion || !attackerCountry || !defenderCountry) continue;
+
+      let gfx = this.frontGraphics.get(front.id);
+      if (!gfx) {
+        gfx = new PIXI.Graphics();
+        this.container.addChild(gfx);
+        this.frontGraphics.set(front.id, gfx);
+      }
+
+      gfx.clear();
+
+      const ax = attackerRegion.centroid.x;
+      const ay = attackerRegion.centroid.y;
+      const dx = defenderRegion.centroid.x;
+      const dy = defenderRegion.centroid.y;
+
+      // Draw contested edge as gradient line
+      const attackerColor = this.hexFromHsl(attackerCountry.color);
+      const defenderColor = this.hexFromHsl(defenderCountry.color);
+
+      // Front marker position
+      const frontX = ax + (dx - ax) * (0.3 + front.frontPosition * 0.4);
+      const frontY = ay + (dy - ay) * (0.3 + front.frontPosition * 0.4);
+
+      // Attacker side line
+      gfx.lineStyle(3, attackerColor, 0.8);
+      gfx.moveTo(ax, ay);
+      gfx.lineTo(frontX, frontY);
+
+      // Defender side line
+      gfx.lineStyle(3, defenderColor, 0.8);
+      gfx.moveTo(frontX, frontY);
+      gfx.lineTo(dx, dy);
+
+      // Front marker — small diamond at front position
+      gfx.lineStyle(2, 0xffffff, 0.9);
+      gfx.beginFill(0xffff00, 0.7);
+      const ms = 4;
+      gfx.drawPolygon([
+        frontX, frontY - ms,
+        frontX + ms, frontY,
+        frontX, frontY + ms,
+        frontX - ms, frontY,
+      ]);
+      gfx.endFill();
+
+      // Pulsing effect via alpha
+      gfx.alpha = 0.6 + Math.sin(Date.now() / 300) * 0.2;
+    }
+  }
+
+  private hexFromHsl(hsl: string): number {
+    const match = hsl.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+    if (!match) return 0x888888;
+    const h = parseInt(match[1]) / 360;
+    const s = parseInt(match[2]) / 100;
+    const l = parseInt(match[3]) / 100;
+    let r: number, g: number, b: number;
+    if (s === 0) {
+      r = g = b = l;
+    } else {
+      const hue2rgb = (p: number, q: number, t: number) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+      };
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1 / 3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1 / 3);
+    }
+    const toHex = (c: number) => Math.round(c * 255);
+    return (toHex(r) << 16) | (toHex(g) << 8) | toHex(b);
   }
 
   destroy(): void {

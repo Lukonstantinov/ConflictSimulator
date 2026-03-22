@@ -27,6 +27,14 @@ export interface Region {
 
 export type TerrainType = 'plains' | 'mountains' | 'forest' | 'desert' | 'coast' | 'ocean';
 
+export type UnitType = 'heavy' | 'light' | 'levy';
+
+export interface UnitComposition {
+  heavy: number;
+  light: number;
+  levy: number;
+}
+
 export interface Country {
   id: string;
   name: string;
@@ -53,9 +61,26 @@ export interface Army {
   target: number | null;
   morale: number;
   progress: number;
+  units: UnitComposition;
+  /** When engaged at a border front, the ID of that front */
+  borderFrontId?: string;
 }
 
 export type Relation = 'neutral' | 'hostile' | 'allied' | 'at_war';
+
+export interface BorderFront {
+  id: string;
+  /** Region the attacker is coming from */
+  attackerRegionId: number;
+  /** Region the defender holds */
+  defenderRegionId: number;
+  attackerCountryId: string;
+  defenderCountryId: string;
+  attackerArmyId: string;
+  defenderArmyId: string | null;
+  /** 0 = attacker side of border, 1 = defender side (region captured) */
+  frontPosition: number;
+}
 
 export interface SimulationState {
   tick: number;
@@ -66,7 +91,8 @@ export interface SimulationState {
 }
 
 export type SimEventType = 'war_declared' | 'battle' | 'region_captured' | 'country_eliminated'
-  | 'alliance_formed' | 'alliance_broken' | 'peace_treaty' | 'fortification_built';
+  | 'alliance_formed' | 'alliance_broken' | 'peace_treaty' | 'fortification_built'
+  | 'border_clash' | 'border_breakthrough';
 
 export interface SimEvent {
   tick: number;
@@ -136,4 +162,5 @@ export interface StateDelta {
   events: SimEvent[];
   eliminatedCountries: string[];
   winner: string | null;
+  borderFronts: BorderFront[];
 }
