@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMapStore } from '../store/mapStore';
 import { useUIStore } from '../store/uiStore';
+import { useSimStore } from '../store/simStore';
 import type { StrategyType } from '../types';
 
 const STRATEGIES: StrategyType[] = ['aggressive', 'defensive', 'expansionist', 'opportunist', 'turtle'];
@@ -14,7 +15,10 @@ export default function CountryPanel() {
   const selectCountry = useUIStore((s) => s.selectCountry);
   const toolMode = useUIStore((s) => s.toolMode);
   const setToolMode = useUIStore((s) => s.setToolMode);
+  const simStatus = useSimStore((s) => s.status);
   const [newName, setNewName] = useState('');
+
+  const isSimRunning = simStatus !== 'setup';
 
   if (!map) return null;
 
@@ -29,24 +33,26 @@ export default function CountryPanel() {
       <h2 className="text-lg font-bold border-b border-gray-600 pb-2">Countries</h2>
 
       {/* Tool Mode Toggle */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setToolMode('view')}
-          className={`flex-1 px-2 py-1 rounded text-sm ${
-            toolMode === 'view' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
-          }`}
-        >
-          View
-        </button>
-        <button
-          onClick={() => setToolMode('assign')}
-          className={`flex-1 px-2 py-1 rounded text-sm ${
-            toolMode === 'assign' ? 'bg-green-600' : 'bg-gray-700 hover:bg-gray-600'
-          }`}
-        >
-          Assign Regions
-        </button>
-      </div>
+      {!isSimRunning && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => setToolMode('view')}
+            className={`flex-1 px-2 py-1 rounded text-sm ${
+              toolMode === 'view' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
+            }`}
+          >
+            View
+          </button>
+          <button
+            onClick={() => setToolMode('assign')}
+            className={`flex-1 px-2 py-1 rounded text-sm ${
+              toolMode === 'assign' ? 'bg-green-600' : 'bg-gray-700 hover:bg-gray-600'
+            }`}
+          >
+            Assign Regions
+          </button>
+        </div>
+      )}
 
       {toolMode === 'assign' && selectedCountryId && (
         <p className="text-xs text-green-400">
@@ -55,21 +61,23 @@ export default function CountryPanel() {
       )}
 
       {/* Add Country */}
-      <div className="flex gap-2">
-        <input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder="Country name..."
-          className="flex-1 bg-gray-700 rounded px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-blue-500"
-          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-        />
-        <button
-          onClick={handleAdd}
-          className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-sm"
-        >
-          Add
-        </button>
-      </div>
+      {!isSimRunning && (
+        <div className="flex gap-2">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Country name..."
+            className="flex-1 bg-gray-700 rounded px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+          />
+          <button
+            onClick={handleAdd}
+            className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-sm"
+          >
+            Add
+          </button>
+        </div>
+      )}
 
       {/* Country List */}
       {map.countries.map((country) => (
@@ -90,20 +98,31 @@ export default function CountryPanel() {
               />
               <span className="font-medium text-sm">{country.name}</span>
             </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                removeCountry(country.id);
-                if (selectedCountryId === country.id) selectCountry(null);
-              }}
-              className="text-red-400 hover:text-red-300 text-xs"
-            >
-              Remove
-            </button>
+            {!isSimRunning && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeCountry(country.id);
+                  if (selectedCountryId === country.id) selectCountry(null);
+                }}
+                className="text-red-400 hover:text-red-300 text-xs"
+              >
+                Remove
+              </button>
+            )}
           </div>
 
           <div className="text-xs text-gray-400 mb-1">
             Regions: {country.regions.length}
+            {isSimRunning && (
+              <>
+                {' | '}Treasury: {Math.floor(country.treasury)}
+                {' | '}Armies: {country.activeArmies.length}
+                {!country.isAlive && (
+                  <span className="text-red-500 font-bold ml-1">ELIMINATED</span>
+                )}
+              </>
+            )}
           </div>
 
           {/* Army Size */}
@@ -118,6 +137,7 @@ export default function CountryPanel() {
                 updateCountry(country.id, { armySize: parseInt(e.target.value) })
               }
               onClick={(e) => e.stopPropagation()}
+              disabled={isSimRunning}
               className="w-full h-1 mt-1"
             />
           </label>
@@ -134,6 +154,7 @@ export default function CountryPanel() {
                 updateCountry(country.id, { economy: parseInt(e.target.value) })
               }
               onClick={(e) => e.stopPropagation()}
+              disabled={isSimRunning}
               className="w-full h-1 mt-1"
             />
           </label>
@@ -147,6 +168,7 @@ export default function CountryPanel() {
                 updateCountry(country.id, { strategy: e.target.value as StrategyType })
               }
               onClick={(e) => e.stopPropagation()}
+              disabled={isSimRunning}
               className="w-full bg-gray-600 rounded px-1 py-0.5 mt-1 text-white text-xs"
             >
               {STRATEGIES.map((s) => (

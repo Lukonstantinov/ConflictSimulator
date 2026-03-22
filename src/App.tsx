@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
 import MapCanvas from './components/MapCanvas';
 import CountryPanel from './components/CountryPanel';
+import SimControls from './components/SimControls';
+import EventLog from './components/EventLog';
 import { useMapStore } from './store/mapStore';
 import { useUIStore } from './store/uiStore';
+import { useSimStore } from './store/simStore';
 
 const DEFAULT_REGION_COUNT = 60;
 
@@ -17,6 +20,7 @@ export default function App() {
   const showCountryPanel = useUIStore((s) => s.showCountryPanel);
   const toggleCountryPanel = useUIStore((s) => s.toggleCountryPanel);
   const selectedRegionId = useUIStore((s) => s.selectedRegionId);
+  const simStatus = useSimStore((s) => s.status);
 
   const [seedInput, setSeedInput] = useState('');
   const [regionCount, setRegionCount] = useState(DEFAULT_REGION_COUNT);
@@ -145,6 +149,13 @@ export default function App() {
           </button>
         </div>
 
+        {/* Simulation Controls */}
+        {map && (
+          <div className="bg-gray-800 px-3 py-2 border-b border-gray-700">
+            <SimControls />
+          </div>
+        )}
+
         {/* Map Canvas */}
         <div className="relative" style={{ height: mapSize.h, maxWidth: '100%' }}>
           {map ? (
@@ -172,6 +183,9 @@ export default function App() {
             </div>
           )}
         </div>
+
+        {/* Event Log */}
+        <EventLog />
       </div>
 
       {/* Country Panel — below map on mobile, side on desktop */}
