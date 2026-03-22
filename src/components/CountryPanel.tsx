@@ -25,7 +25,7 @@ export default function CountryPanel() {
   };
 
   return (
-    <div className="w-72 bg-gray-800 text-white p-4 overflow-y-auto flex flex-col gap-3 h-full">
+    <div className="w-full md:w-72 bg-gray-800 text-white p-4 overflow-y-auto flex flex-col gap-3 md:h-[100dvh]">
       <h2 className="text-lg font-bold border-b border-gray-600 pb-2">Countries</h2>
 
       {/* Tool Mode Toggle */}

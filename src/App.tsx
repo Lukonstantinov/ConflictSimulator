@@ -4,8 +4,6 @@ import CountryPanel from './components/CountryPanel';
 import { useMapStore } from './store/mapStore';
 import { useUIStore } from './store/uiStore';
 
-const DEFAULT_WIDTH = 1200;
-const DEFAULT_HEIGHT = 800;
 const DEFAULT_REGION_COUNT = 60;
 
 export default function App() {
@@ -23,25 +21,38 @@ export default function App() {
   const [seedInput, setSeedInput] = useState('');
   const [regionCount, setRegionCount] = useState(DEFAULT_REGION_COUNT);
   const [showLoadMenu, setShowLoadMenu] = useState(false);
+  const [mapSize, setMapSize] = useState({ w: 800, h: 600 });
 
   useEffect(() => {
     refreshSavedMapsList();
   }, [refreshSavedMapsList]);
 
+  // Compute responsive map dimensions
+  useEffect(() => {
+    const updateSize = () => {
+      const w = Math.min(window.innerWidth, 1200);
+      const h = Math.round(w * (2 / 3)); // 3:2 aspect ratio
+      setMapSize({ w, h });
+    };
+    updateSize();
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
+  }, []);
+
   const handleGenerate = () => {
     const seed = seedInput ? parseInt(seedInput) : undefined;
-    generateMap(DEFAULT_WIDTH, DEFAULT_HEIGHT, regionCount, seed);
+    generateMap(mapSize.w, mapSize.h, regionCount, seed);
   };
 
   const selectedRegion = map?.regions.find((r) => r.id === selectedRegionId);
 
   return (
-    <div className="flex h-screen w-screen bg-gray-900 text-white">
+    <div className="flex flex-col md:flex-row min-h-[100dvh] bg-gray-900 text-white">
       {/* Main Area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Top Bar */}
-        <div className="bg-gray-800 px-4 py-2 flex items-center gap-3 border-b border-gray-700">
-          <h1 className="font-bold text-sm mr-2">ConflictSimulator</h1>
+        <div className="bg-gray-800 px-3 py-2 flex flex-wrap items-center gap-2 border-b border-gray-700">
+          <h1 className="font-bold text-sm mr-1">ConflictSimulator</h1>
 
           <input
             type="number"
@@ -67,7 +78,7 @@ export default function App() {
             onClick={handleGenerate}
             className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-sm"
           >
-            Generate Map
+            Generate
           </button>
 
           {map && (
@@ -128,14 +139,14 @@ export default function App() {
 
           <button
             onClick={toggleCountryPanel}
-            className="ml-auto bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm"
+            className="md:ml-auto bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm"
           >
             {showCountryPanel ? 'Hide Panel' : 'Show Panel'}
           </button>
         </div>
 
         {/* Map Canvas */}
-        <div className="flex-1 relative">
+        <div className="relative" style={{ height: mapSize.h, maxWidth: '100%' }}>
           {map ? (
             <MapCanvas />
           ) : (
@@ -163,7 +174,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Country Panel */}
+      {/* Country Panel — below map on mobile, side on desktop */}
       {showCountryPanel && map && <CountryPanel />}
     </div>
   );
