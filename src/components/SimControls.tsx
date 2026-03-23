@@ -1,7 +1,7 @@
 import { useSimStore } from '../store/simStore';
 import { useMapStore } from '../store/mapStore';
 import { simulationRunner } from '../engine/worker';
-import type { VictoryConfig, VictoryCondition } from '../types';
+import type { VictoryConfig, VictoryCondition, TacticalBattleMode } from '../types';
 
 const SPEED_OPTIONS = [0.5, 1, 2, 5, 10];
 
@@ -24,6 +24,9 @@ export default function SimControls({ victoryConfig, onVictoryConfigChange }: Si
   const recordTerritory = useSimStore((s) => s.recordTerritory);
   const setBorderFronts = useSimStore((s) => s.setBorderFronts);
   const setTradeRoutes = useSimStore((s) => s.setTradeRoutes);
+  const tacticalBattleMode = useSimStore((s) => s.tacticalBattleMode);
+  const setTacticalBattleMode = useSimStore((s) => s.setTacticalBattleMode);
+  const setPendingTacticalBattle = useSimStore((s) => s.setPendingTacticalBattle);
   const reset = useSimStore((s) => s.reset);
 
   const map = useMapStore((s) => s.map);
@@ -82,6 +85,12 @@ export default function SimControls({ victoryConfig, onVictoryConfigChange }: Si
       setStatus('finished');
     });
 
+    simulationRunner.setTacticalBattleMode(tacticalBattleMode);
+    simulationRunner.setOnTacticalBattle((battle) => {
+      setPendingTacticalBattle(battle);
+      setStatus('paused');
+    });
+
     simulationRunner.setSpeed(speed);
     simulationRunner.start();
     setStatus('running');
@@ -107,6 +116,11 @@ export default function SimControls({ victoryConfig, onVictoryConfigChange }: Si
     simulationRunner.setSpeed(newSpeed);
   };
 
+  const handleBattleModeChange = (mode: TacticalBattleMode) => {
+    setTacticalBattleMode(mode);
+    simulationRunner.setTacticalBattleMode(mode);
+  };
+
   const victoryLabel: Record<VictoryCondition, string> = {
     conquest: 'Conquest',
     economic: 'Economic',
@@ -130,6 +144,29 @@ export default function SimControls({ victoryConfig, onVictoryConfigChange }: Si
               }`}
             >
               {victoryLabel[vc]}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Tactical Battle Mode (setup only) */}
+      {status === 'setup' && (
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-gray-400">Battles:</span>
+          {([
+            ['auto', 'Auto'],
+            ['player_choice', 'Ask'],
+          ] as [TacticalBattleMode, string][]).map(([mode, label]) => (
+            <button
+              key={mode}
+              onClick={() => handleBattleModeChange(mode)}
+              className={`px-2 py-0.5 rounded text-xs ${
+                tacticalBattleMode === mode
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+              }`}
+            >
+              {label}
             </button>
           ))}
         </div>

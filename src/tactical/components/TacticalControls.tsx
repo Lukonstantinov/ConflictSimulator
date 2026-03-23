@@ -29,7 +29,7 @@ export default function TacticalControls({
   const selectedUnits = units.filter((u) => selectedUnitIds.includes(u.id));
   const hasSmokeCharges = selectedUnits.some((u) => u.smokeCharges > 0);
 
-  const scenarioNames = ['Village Assault', 'Urban Defense', 'Forest Ambush', 'Factory Assault', 'Coastal Landing'];
+  const scenarioNames = ['Tutorial', 'Village Assault', 'Urban Defense', 'Forest Ambush', 'Factory Assault', 'Coastal Landing'];
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -165,6 +165,17 @@ export default function TacticalControls({
           Smoke
         </button>
       )}
+
+      {/* Help button */}
+      <button
+        onClick={() => {
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }));
+        }}
+        className="bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-xs ml-auto"
+        title="Keyboard shortcuts (press ?)"
+      >
+        ?
+      </button>
     </div>
   );
 }

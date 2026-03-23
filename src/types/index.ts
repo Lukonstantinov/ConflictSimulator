@@ -109,17 +109,39 @@ export interface BorderFront {
   frontPosition: number;
 }
 
+export type TacticalBattleMode = 'auto' | 'player_choice' | 'always_tactical';
+
+export interface PendingTacticalBattleInfo {
+  id: string;
+  attackerCountryId: string;
+  defenderCountryId: string;
+  attackerArmyId: string;
+  defenderArmyId: string;
+  regionId: number;
+  attackerName: string;
+  defenderName: string;
+  attackerColor: string;
+  defenderColor: string;
+  terrain: TerrainType;
+  strategicTick: number;
+}
+
 export interface SimulationState {
   tick: number;
   speed: number;
   status: 'setup' | 'running' | 'paused' | 'finished';
   events: SimEvent[];
   winner: string | null;
+  /** How to handle battles: auto-resolve, ask player, or always tactical */
+  tacticalBattleMode: TacticalBattleMode;
+  /** Battle waiting for player decision (resolve tactically or auto) */
+  pendingTacticalBattle: PendingTacticalBattleInfo | null;
 }
 
 export type SimEventType = 'war_declared' | 'battle' | 'region_captured' | 'country_eliminated'
   | 'alliance_formed' | 'alliance_broken' | 'peace_treaty' | 'fortification_built'
-  | 'border_clash' | 'border_breakthrough' | 'trade_route_formed' | 'trade_route_broken';
+  | 'border_clash' | 'border_breakthrough' | 'trade_route_formed' | 'trade_route_broken'
+  | 'tactical_battle_available';
 
 export interface SimEvent {
   tick: number;
@@ -191,4 +213,6 @@ export interface StateDelta {
   winner: string | null;
   borderFronts: BorderFront[];
   tradeRoutes: TradeRoute[];
+  /** If a battle can be resolved tactically, this is set */
+  pendingTacticalBattle?: PendingTacticalBattleInfo | null;
 }

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { SimulationState, SimEvent, StateDelta, BorderFront, TradeRoute } from '../types';
+import type { SimulationState, SimEvent, StateDelta, BorderFront, TradeRoute, TacticalBattleMode, PendingTacticalBattleInfo } from '../types';
 
 interface SimStore extends SimulationState {
   /** Recorded deltas for replay */
@@ -20,6 +20,8 @@ interface SimStore extends SimulationState {
   recordTerritory: (counts: Record<string, number>) => void;
   setBorderFronts: (fronts: BorderFront[]) => void;
   setTradeRoutes: (routes: TradeRoute[]) => void;
+  setTacticalBattleMode: (mode: TacticalBattleMode) => void;
+  setPendingTacticalBattle: (battle: PendingTacticalBattleInfo | null) => void;
   reset: () => void;
 }
 
@@ -29,6 +31,8 @@ const initialState: SimulationState & { history: StateDelta[]; territoryHistory:
   status: 'setup',
   events: [],
   winner: null,
+  tacticalBattleMode: 'player_choice',
+  pendingTacticalBattle: null,
   history: [],
   territoryHistory: [],
   borderFronts: [],
@@ -54,6 +58,8 @@ export const useSimStore = create<SimStore>((set) => ({
 
   setBorderFronts: (fronts) => set({ borderFronts: fronts }),
   setTradeRoutes: (routes) => set({ tradeRoutes: routes }),
+  setTacticalBattleMode: (mode) => set({ tacticalBattleMode: mode }),
+  setPendingTacticalBattle: (battle) => set({ pendingTacticalBattle: battle }),
 
   reset: () => set(initialState),
 }));

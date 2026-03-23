@@ -1,4 +1,4 @@
-import type { Region, Country, StateDelta, VictoryConfig } from '../types';
+import type { Region, Country, StateDelta, VictoryConfig, TacticalBattleMode, PendingTacticalBattleInfo } from '../types';
 import { SimulationEngine } from './simulation';
 
 /**
@@ -11,6 +11,8 @@ export class SimulationRunner {
   private speed: number = 1;
   private onTick: ((delta: StateDelta) => void) | null = null;
   private onFinished: ((winnerId: string) => void) | null = null;
+  private onTacticalBattle: ((battle: PendingTacticalBattleInfo) => void) | null = null;
+  private tacticalBattleMode: TacticalBattleMode = 'player_choice';
 
   init(regions: Region[], countries: Country[], seed: number, victoryConfig?: VictoryConfig): void {
     this.stop();
@@ -23,6 +25,14 @@ export class SimulationRunner {
 
   setOnFinished(handler: (winnerId: string) => void): void {
     this.onFinished = handler;
+  }
+
+  setOnTacticalBattle(handler: (battle: PendingTacticalBattleInfo) => void): void {
+    this.onTacticalBattle = handler;
+  }
+
+  setTacticalBattleMode(mode: TacticalBattleMode): void {
+    this.tacticalBattleMode = mode;
   }
 
   start(): void {
@@ -55,6 +65,14 @@ export class SimulationRunner {
     this.engine = null;
   }
 
+  /**
+   * Apply a tactical battle result to the simulation engine.
+   * Called after the player finishes a tactical battle or auto-resolves.
+   */
+  applyTacticalResult(battleId: string, attackerWins: boolean, attackerSurvivalRate: number, defenderSurvivalRate: number): void {
+    this.engine?.applyTacticalResult(battleId, attackerWins, attackerSurvivalRate, defenderSurvivalRate);
+  }
+
   private scheduleInterval(): void {
     if (this.intervalId !== null) {
       clearInterval(this.intervalId);
@@ -71,6 +89,12 @@ export class SimulationRunner {
 
     const delta = this.engine.runTick();
     this.onTick?.(delta);
+
+    // Handle tactical battle if one was triggered
+    if (delta.pendingTacticalBattle && this.tacticalBattleMode === 'player_choice') {
+      this.pause();
+      this.onTacticalBattle?.(delta.pendingTacticalBattle);
+    }
 
     if (delta.winner) {
       this.pause();
