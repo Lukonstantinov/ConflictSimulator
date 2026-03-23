@@ -23,12 +23,13 @@ export default function TacticalControls({
   const playerFaction = useTacticalStore((s) => s.playerFaction);
   const units = useTacticalStore((s) => s.units);
   const selectedUnitIds = useTacticalStore((s) => s.selectedUnitIds);
+  const editorMode = useTacticalStore((s) => s.editorMode);
+  const setEditorMode = useTacticalStore((s) => s.setEditorMode);
 
-  // Check if any selected unit has smoke charges
   const selectedUnits = units.filter((u) => selectedUnitIds.includes(u.id));
   const hasSmokeCharges = selectedUnits.some((u) => u.smokeCharges > 0);
 
-  const scenarioNames = ['Village Assault', 'Urban Defense'];
+  const scenarioNames = ['Village Assault', 'Urban Defense', 'Forest Ambush', 'Factory Assault', 'Coastal Landing'];
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -73,6 +74,19 @@ export default function TacticalControls({
             Defender
           </button>
         </div>
+      )}
+
+      {/* Edit Map button (setup only) */}
+      {status === 'setup' && (
+        <button
+          onClick={() => setEditorMode(!editorMode)}
+          className={`px-2 py-1 rounded text-xs ${
+            editorMode ? 'bg-orange-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+          }`}
+          title="Open map editor to paint terrain, place units, and generate presets"
+        >
+          {editorMode ? 'Editing...' : 'Edit Map'}
+        </button>
       )}
 
       {/* Play controls */}

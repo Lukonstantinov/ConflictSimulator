@@ -2,7 +2,7 @@
 
 ## Project: ConflictSimulator — Fantasy War Simulator
 
-### Version: 3.2.0
+### Version: 3.3.0
 
 A browser-based (PWA, iOS-optimized) fantasy war simulator with Voronoi-based world maps, configurable countries, and real-time war simulation.
 
@@ -303,7 +303,6 @@ src/tactical/
 
 ### Planned Features (Not Yet Implemented)
 
-- Phase 4: Map editor, procedural generation presets
 - Phase 5: Strategic-tactical integration (resolve battles tactically)
 - Phase 6: Mobile polish, sound effects, tutorial
 - Phase 7: Multiplayer (WebSocket/WebRTC)
@@ -321,6 +320,7 @@ npx tsc --noEmit   # Type check
 ---
 
 ## Changelog
+- **3.3.0** — Tactical Phase 4: Map Editor & Procedural Generation Presets: in-browser map editor (terrain paint, unit placement, erase tools with 1×/3×/5× brush sizes), 5 procedural map presets (Village, Forest, Urban District, Factory Complex, Coastal Town) with configurable building/tree density and optional trenches/water, 3 new tactical scenarios (Forest Ambush with dense woodland snipers/ATGM, Factory Assault with heavy armor vs fortified warehouses, Coastal Landing with amphibious assault), map export/import as JSON, regenerate-from-preset button with random seed, editor side panel with terrain palette and unit roster
 - **3.2.0** — Tactical Phases 2+3: Full unit roster (artillery with indirect fire/splash damage, sniper teams with priority targeting/high accuracy, ATGM anti-tank teams with 2.5x armor bonus, recon drones with flying/20-tile sight, helicopters with anti-armor strikes, medic units with squad healing), ammo/supply system (per-unit ammo tracking, depleted units can't fire, HUD warnings), building destruction (artillery splash damages buildings, destroyed buildings become rubble), smoke grenades (player-deployable LOS-blocking smoke with 50-tick duration), surrender mechanic (surrounded low-morale units surrender with white flag), flying unit movement (drones/helicopters ignore terrain), smoke blocks LOS, aerial sight (drones see over buildings), specialized AI per unit type (drone recon AI, medic follow-wounded AI, artillery cluster-targeting AI, sniper priority-targeting AI, helicopter strafe-run AI), Urban Defense scenario with combined-arms forces, scenario selector dropdown, unique PixiJS shapes per unit type (diamond/triangle/pentagon/X-shape/teardrop/cross)
 - **3.0.0** — Tactical Combat Mode: grid-based real-time tactical combat with modern military units (infantry squads, tanks, APCs), A* pathfinding, Bresenham line-of-sight, fog of war, cover/terrain system, tactical AI (defender positions in buildings, attacker advances with cover), Village Assault scenario (60x40 grid, procedural village), PixiJS renderer with unit markers and shot effects, play/pause/speed controls, faction selection, mode switcher in top bar (Strategic/Tactical), lazy-loaded tactical view
 - **2.1.0** — Phase 11 Resources & Trade Routes + Unit Stats: five resource types (food, metal, wood, salt, gold) with terrain-based production (Plains→food, Mountains→metal, Forest→wood, Coast→salt+food, Desert→salt), random bonus deposits at map gen (15% chance/region, gold rare 5%), army resource upkeep (Heavy needs food+metal, Light/Levy need food), resource deficit morale/income penalties, trade routes auto-form between peaceful nations with complementary surpluses (max 3/country), war breaks trade routes, animated color-coded dashed lines on map for trade routes, resource stockpile shown in CountryPanel and StatsOverlay, region resource info on click, detailed per-army unit stats display (combat multiplier, speed, composition) when clicking regions with armies, bonus resource indicators on regions

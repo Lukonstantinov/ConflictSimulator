@@ -110,6 +110,16 @@ export class TacticalRenderer {
     this.onUnitClick = handler;
   }
 
+  /** Convert canvas screen coordinates to tile grid coordinates */
+  screenToTile(screenX: number, screenY: number): { x: number; y: number } {
+    const worldX = (screenX - this.panX) / this.zoom;
+    const worldY = (screenY - this.panY) / this.zoom;
+    return {
+      x: Math.floor(worldX / this.tileSize),
+      y: Math.floor(worldY / this.tileSize),
+    };
+  }
+
   drawMap(map: TacticalMap): void {
     this.gridLayer.clear();
 
