@@ -1,5 +1,5 @@
 import type { TacticalUnit, TacticalMap, TacticalEvent, TacticalStatus, PlayerCommand } from '../types';
-import { resolveTacticalCombat } from './combat';
+import { resolveTacticalCombat, resolveMedicHealing } from './combat';
 import { moveUnit, findPath } from './movement';
 import { runTacticalAI } from './ai';
 
@@ -26,10 +26,12 @@ export class TacticalEngine {
     this.units = units;
     this.playerFaction = playerFaction;
 
-    // Place units on the map
+    // Place units on the map (non-flying only)
     for (const unit of this.units) {
-      const tile = this.map.tiles[unit.position.y]?.[unit.position.x];
-      if (tile) tile.occupied = unit.id;
+      if (!unit.flying) {
+        const tile = this.map.tiles[unit.position.y]?.[unit.position.x];
+        if (tile) tile.occupied = unit.id;
+      }
     }
   }
 
@@ -89,14 +91,14 @@ export class TacticalEngine {
     const tickEvents: TacticalEvent[] = [];
 
     // 1. Process player commands
-    this.processCommands();
+    this.processCommands(tickEvents);
 
     // 2. AI decisions
-    runTacticalAI(this.units, this.map, this.playerFaction);
+    runTacticalAI(this.units, this.map, this.playerFaction, this.tick);
 
     // 3. Movement resolution
     for (const unit of this.units) {
-      if (unit.state === 'destroyed') continue;
+      if (unit.state === 'destroyed' || unit.state === 'surrendered') continue;
       if (unit.state === 'moving' || unit.state === 'retreating') {
         const arrived = moveUnit(unit, this.map, this.tickRate);
         if (arrived && unit.state === 'moving') {
@@ -109,25 +111,37 @@ export class TacticalEngine {
     const combatEvents = resolveTacticalCombat(this.units, this.map, this.tick);
     tickEvents.push(...combatEvents);
 
-    // 5. Morale recovery for idle units
+    // 5. Medic healing
+    const healEvents = resolveMedicHealing(this.units, this.map, this.tick);
+    tickEvents.push(...healEvents);
+
+    // 6. Morale recovery for idle units
     for (const unit of this.units) {
-      if (unit.state === 'destroyed') continue;
+      if (unit.state === 'destroyed' || unit.state === 'surrendered') continue;
       if (unit.state === 'idle' || unit.state === 'attacking') {
         unit.morale = Math.min(100, unit.morale + 0.1);
       }
     }
 
-    // 6. Clear occupied for destroyed units
+    // 7. Surrender check — surrounded + low morale
+    this.checkSurrenders(tickEvents);
+
+    // 8. Smoke decay
+    this.decaySmoke();
+
+    // 9. Clear occupied for destroyed/surrendered units
     for (const unit of this.units) {
-      if (unit.state === 'destroyed') {
-        const tile = this.map.tiles[unit.position.y]?.[unit.position.x];
-        if (tile && tile.occupied === unit.id) {
-          tile.occupied = undefined;
+      if (unit.state === 'destroyed' || unit.state === 'surrendered') {
+        if (!unit.flying) {
+          const tile = this.map.tiles[unit.position.y]?.[unit.position.x];
+          if (tile && tile.occupied === unit.id) {
+            tile.occupied = undefined;
+          }
         }
       }
     }
 
-    // 7. Victory check
+    // 10. Victory check
     const result = this.checkVictory();
     if (result) {
       this.status = result;
@@ -141,13 +155,22 @@ export class TacticalEngine {
     this.emitState();
   }
 
-  private processCommands(): void {
+  private processCommands(tickEvents: TacticalEvent[]): void {
     while (this.commandQueue.length > 0) {
       const cmd = this.commandQueue.shift()!;
 
       for (const unitId of cmd.unitIds) {
         const unit = this.units.find((u) => u.id === unitId);
-        if (!unit || unit.state === 'destroyed' || unit.faction !== this.playerFaction) continue;
+        if (!unit || unit.state === 'destroyed' || unit.state === 'surrendered' || unit.faction !== this.playerFaction) continue;
+
+        if (cmd.type === 'smoke') {
+          // Deploy smoke grenade
+          if (unit.smokeCharges > 0) {
+            unit.smokeCharges--;
+            this.deploySmoke(cmd.target, tickEvents);
+          }
+          continue;
+        }
 
         if (cmd.type === 'move') {
           const path = findPath(this.map, unit.position, cmd.target, unit.type, this.units);
@@ -191,28 +214,94 @@ export class TacticalEngine {
     }
   }
 
+  private deploySmoke(target: { x: number; y: number }, events: TacticalEvent[]): void {
+    const radius = 2;
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const tx = target.x + dx;
+        const ty = target.y + dy;
+        if (tx < 0 || tx >= this.map.width || ty < 0 || ty >= this.map.height) continue;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= radius) {
+          this.map.tiles[ty][tx].smoke = 50; // 50 ticks = 5 seconds at 10tps
+        }
+      }
+    }
+    events.push({
+      tick: this.tick,
+      type: 'smoke_deployed',
+      details: { x: target.x, y: target.y },
+    });
+  }
+
+  private decaySmoke(): void {
+    for (let y = 0; y < this.map.height; y++) {
+      for (let x = 0; x < this.map.width; x++) {
+        if (this.map.tiles[y][x].smoke > 0) {
+          this.map.tiles[y][x].smoke--;
+        }
+      }
+    }
+  }
+
+  private checkSurrenders(events: TacticalEvent[]): void {
+    for (const unit of this.units) {
+      if (unit.state === 'destroyed' || unit.state === 'surrendered') continue;
+      if (unit.morale > 15) continue;
+
+      // Check if surrounded: count nearby enemies vs allies within 5 tiles
+      let nearbyEnemies = 0;
+      let nearbyAllies = 0;
+
+      for (const other of this.units) {
+        if (other.state === 'destroyed' || other.state === 'surrendered') continue;
+        const dx = other.position.x - unit.position.x;
+        const dy = other.position.y - unit.position.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 5) continue;
+
+        if (other.faction === unit.faction && other.id !== unit.id) {
+          nearbyAllies++;
+        } else if (other.faction !== unit.faction) {
+          nearbyEnemies++;
+        }
+      }
+
+      // Surrender if outnumbered 2:1 and low morale
+      if (nearbyEnemies >= 2 && nearbyEnemies > nearbyAllies * 2 && unit.morale < 10) {
+        unit.state = 'surrendered';
+        events.push({
+          tick: this.tick,
+          type: 'unit_surrendered',
+          details: { unitId: unit.id },
+        });
+      }
+    }
+  }
+
   private checkVictory(): 'victory' | 'defeat' | null {
     const attackerUnits = this.units.filter(
-      (u) => u.faction === 'attacker' && u.state !== 'destroyed',
+      (u) => u.faction === 'attacker' && u.state !== 'destroyed' && u.state !== 'surrendered',
     );
     const defenderUnits = this.units.filter(
-      (u) => u.faction === 'defender' && u.state !== 'destroyed',
+      (u) => u.faction === 'defender' && u.state !== 'destroyed' && u.state !== 'surrendered',
     );
 
-    // All defenders destroyed = attacker wins
+    // All defenders destroyed/surrendered = attacker wins
     if (defenderUnits.length === 0) {
       return this.playerFaction === 'attacker' ? 'victory' : 'defeat';
     }
 
-    // All attackers destroyed = defender wins
+    // All attackers destroyed/surrendered = defender wins
     if (attackerUnits.length === 0) {
       return this.playerFaction === 'defender' ? 'victory' : 'defeat';
     }
 
-    // 60%+ of attacking force destroyed = defender wins
+    // 60%+ of attacking force destroyed/surrendered = defender wins
     const totalAttackers = this.units.filter((u) => u.faction === 'attacker').length;
-    const destroyedAttackers = totalAttackers - attackerUnits.length;
-    if (destroyedAttackers / totalAttackers >= 0.6) {
+    const activeAttackers = attackerUnits.length;
+    const lostAttackers = totalAttackers - activeAttackers;
+    if (lostAttackers / totalAttackers >= 0.6) {
       return this.playerFaction === 'defender' ? 'victory' : 'defeat';
     }
 

@@ -2,7 +2,7 @@
 
 ## Project: ConflictSimulator — Fantasy War Simulator
 
-### Version: 3.0.0
+### Version: 3.2.0
 
 A browser-based (PWA, iOS-optimized) fantasy war simulator with Voronoi-based world maps, configurable countries, and real-time war simulation.
 
@@ -278,6 +278,12 @@ src/tactical/
 - **Infantry**: Squad-based (4-12 soldiers), enters buildings, range 6
 - **Tank**: High armor (0.7), high damage (40), range 10, turret facing
 - **APC**: Fast (2.5 speed), medium armor (0.4), range 4
+- **Artillery**: Indirect fire (no LOS needed), range 18, min range 5, splash damage radius 2, slow fire rate
+- **Sniper**: 2-man team, range 14, high accuracy (0.85), sight 16, priority targeting (ATGM>medics>snipers)
+- **ATGM**: 3-man anti-tank team, range 12, 2.5x anti-armor bonus, enters buildings
+- **Drone**: Unarmed recon, flying (ignores terrain), sight 20, fragile
+- **Helicopter**: Flying, range 8, 1.5x anti-armor, speed 3.5
+- **Medic**: 2-man team, heals nearby wounded infantry squads, no attack
 
 ### Terrain Types
 - open, road, building, rubble, trees, water, trench
@@ -288,10 +294,15 @@ src/tactical/
 - Suppression at morale <20, retreat at morale <10
 - Auto-targeting nearest enemy in range + LOS
 
+### Advanced Mechanics (Phase 3)
+- **Ammo system**: Each unit has limited ammo; depleted units cannot fire; low ammo warning in HUD
+- **Building destruction**: Artillery splash damages buildings; destroyed buildings become rubble terrain
+- **Smoke grenades**: Player-deployable smoke (blocks LOS, 50 tick duration, radius 2); UI smoke mode button
+- **Medic healing**: Medic units restore casualties to nearby friendly infantry squads
+- **Surrender**: Units with morale <10 surrounded by 2:1 enemies surrender (white flag state)
+
 ### Planned Features (Not Yet Implemented)
 
-- Phase 2: Artillery, drones, helicopters, snipers, ATGM teams
-- Phase 3: Ammo/supply, building destruction, smoke grenades, medics
 - Phase 4: Map editor, procedural generation presets
 - Phase 5: Strategic-tactical integration (resolve battles tactically)
 - Phase 6: Mobile polish, sound effects, tutorial
@@ -310,6 +321,7 @@ npx tsc --noEmit   # Type check
 ---
 
 ## Changelog
+- **3.2.0** — Tactical Phases 2+3: Full unit roster (artillery with indirect fire/splash damage, sniper teams with priority targeting/high accuracy, ATGM anti-tank teams with 2.5x armor bonus, recon drones with flying/20-tile sight, helicopters with anti-armor strikes, medic units with squad healing), ammo/supply system (per-unit ammo tracking, depleted units can't fire, HUD warnings), building destruction (artillery splash damages buildings, destroyed buildings become rubble), smoke grenades (player-deployable LOS-blocking smoke with 50-tick duration), surrender mechanic (surrounded low-morale units surrender with white flag), flying unit movement (drones/helicopters ignore terrain), smoke blocks LOS, aerial sight (drones see over buildings), specialized AI per unit type (drone recon AI, medic follow-wounded AI, artillery cluster-targeting AI, sniper priority-targeting AI, helicopter strafe-run AI), Urban Defense scenario with combined-arms forces, scenario selector dropdown, unique PixiJS shapes per unit type (diamond/triangle/pentagon/X-shape/teardrop/cross)
 - **3.0.0** — Tactical Combat Mode: grid-based real-time tactical combat with modern military units (infantry squads, tanks, APCs), A* pathfinding, Bresenham line-of-sight, fog of war, cover/terrain system, tactical AI (defender positions in buildings, attacker advances with cover), Village Assault scenario (60x40 grid, procedural village), PixiJS renderer with unit markers and shot effects, play/pause/speed controls, faction selection, mode switcher in top bar (Strategic/Tactical), lazy-loaded tactical view
 - **2.1.0** — Phase 11 Resources & Trade Routes + Unit Stats: five resource types (food, metal, wood, salt, gold) with terrain-based production (Plains→food, Mountains→metal, Forest→wood, Coast→salt+food, Desert→salt), random bonus deposits at map gen (15% chance/region, gold rare 5%), army resource upkeep (Heavy needs food+metal, Light/Levy need food), resource deficit morale/income penalties, trade routes auto-form between peaceful nations with complementary surpluses (max 3/country), war breaks trade routes, animated color-coded dashed lines on map for trade routes, resource stockpile shown in CountryPanel and StatsOverlay, region resource info on click, detailed per-army unit stats display (combat multiplier, speed, composition) when clicking regions with armies, bonus resource indicators on regions
 - **2.0.0** — Phase 9 & 10 Multi-Type Units & Border Combat: three unit types per army (Heavy 1.5× combat/pentagon, Light 1× baseline/diamond, Levy 0.6× cheap/circle), strategy-based unit mix (aggressive→heavy, expansionist→light, turtle→levy), unit-type spawn costs (Heavy=5, Light=3, Levy=1), army speed limited by slowest unit type, shield-shaped PixiJS markers with H/L/V labels, unit breakdown in CountryPanel and StatsOverlay; border front combat system with push mechanic (armies stop at contested borders, sustained per-tick combat with frontDelta=(ratio-1)×0.02), BorderFront visual overlay with gradient lines and front position marker, region captured on breakthrough (frontPosition≥1.0), defender retreat/garrison mechanics, peace treaty front cleanup

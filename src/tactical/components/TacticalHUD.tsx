@@ -8,8 +8,8 @@ export default function TacticalHUD() {
 
   const selectedUnits = units.filter((u) => selectedUnitIds.includes(u.id));
 
-  const attackerAlive = units.filter((u) => u.faction === 'attacker' && u.state !== 'destroyed').length;
-  const defenderAlive = units.filter((u) => u.faction === 'defender' && u.state !== 'destroyed').length;
+  const attackerAlive = units.filter((u) => u.faction === 'attacker' && u.state !== 'destroyed' && u.state !== 'surrendered').length;
+  const defenderAlive = units.filter((u) => u.faction === 'defender' && u.state !== 'destroyed' && u.state !== 'surrendered').length;
   const totalAttacker = units.filter((u) => u.faction === 'attacker').length;
   const totalDefender = units.filter((u) => u.faction === 'defender').length;
 
@@ -50,10 +50,15 @@ export default function TacticalHUD() {
               {selectedUnits.map((u) => (
                 <div key={u.id} className="flex gap-2 text-gray-400">
                   <span className="capitalize">{u.type}</span>
-                  {u.type === 'infantry' ? (
+                  {isSquadUnit(u.type) ? (
                     <span>Squad: {u.squadSize}/{u.maxSquadSize}</span>
                   ) : (
                     <span>HP: {Math.round(u.health)}%</span>
+                  )}
+                  {u.maxAmmo > 0 && (
+                    <span className={u.ammo <= 3 ? 'text-yellow-400' : ''}>
+                      Ammo: {u.ammo}
+                    </span>
                   )}
                 </div>
               ))}
@@ -65,24 +70,48 @@ export default function TacticalHUD() {
   );
 }
 
+function isSquadUnit(type: string): boolean {
+  return type === 'infantry' || type === 'sniper' || type === 'atgm' || type === 'medic';
+}
+
 function SingleUnitInfo({ unit }: { unit: ReturnType<typeof useTacticalStore.getState>['units'][0] }) {
   return (
     <div>
-      <p className="font-bold capitalize text-gray-200">{unit.type}</p>
+      <p className="font-bold capitalize text-gray-200">
+        {unit.type}
+        {unit.flying && <span className="text-cyan-400 ml-1">(Flying)</span>}
+      </p>
       <p className="text-gray-400">
         Faction: <span className={unit.faction === 'attacker' ? 'text-blue-400' : 'text-red-400'}>
           {unit.faction}
         </span>
       </p>
-      {unit.type === 'infantry' ? (
+      {isSquadUnit(unit.type) ? (
         <p>Squad: {unit.squadSize}/{unit.maxSquadSize}</p>
       ) : (
         <p>Health: {Math.round(unit.health)}%</p>
       )}
       <p>Morale: {Math.round(unit.morale)}%</p>
       <p className="capitalize">State: {unit.state}</p>
-      <p>Range: {unit.stats.range} | Speed: {unit.stats.speed}</p>
+      <p>Range: {unit.stats.range}{unit.stats.minRange ? ` (min: ${unit.stats.minRange})` : ''} | Speed: {unit.stats.speed}</p>
       <p>Damage: {unit.stats.damage} | Armor: {Math.round(unit.stats.armor * 100)}%</p>
+      {unit.maxAmmo > 0 && (
+        <p className={unit.ammo <= 3 ? 'text-yellow-400' : ''}>
+          Ammo: {unit.ammo}/{unit.maxAmmo}
+        </p>
+      )}
+      {unit.smokeCharges > 0 && (
+        <p className="text-gray-400">Smoke: {unit.smokeCharges}</p>
+      )}
+      {unit.stats.antiArmor && unit.stats.antiArmor > 1 && (
+        <p className="text-orange-400">Anti-Armor: {unit.stats.antiArmor}x</p>
+      )}
+      {unit.stats.splashRadius && (
+        <p className="text-orange-400">Splash: {unit.stats.splashRadius} tiles</p>
+      )}
+      {unit.stats.canHeal && (
+        <p className="text-green-400">Healer</p>
+      )}
     </div>
   );
 }

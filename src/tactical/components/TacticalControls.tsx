@@ -7,17 +7,47 @@ interface Props {
   onStop: () => void;
   onSpeedChange: (speed: number) => void;
   onFactionChange: (faction: 'attacker' | 'defender') => void;
+  onScenarioChange?: (scenarioIndex: number) => void;
+  scenarioIndex?: number;
+  smokeMode?: boolean;
+  onToggleSmokeMode?: () => void;
 }
 
 export default function TacticalControls({
   onStart, onPause, onResume, onStop, onSpeedChange, onFactionChange,
+  onScenarioChange, scenarioIndex = 0,
+  smokeMode, onToggleSmokeMode,
 }: Props) {
   const status = useTacticalStore((s) => s.status);
   const speed = useTacticalStore((s) => s.speed);
   const playerFaction = useTacticalStore((s) => s.playerFaction);
+  const units = useTacticalStore((s) => s.units);
+  const selectedUnitIds = useTacticalStore((s) => s.selectedUnitIds);
+
+  // Check if any selected unit has smoke charges
+  const selectedUnits = units.filter((u) => selectedUnitIds.includes(u.id));
+  const hasSmokeCharges = selectedUnits.some((u) => u.smokeCharges > 0);
+
+  const scenarioNames = ['Village Assault', 'Urban Defense'];
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
+      {/* Scenario selector (only in setup) */}
+      {status === 'setup' && onScenarioChange && (
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-gray-400">Scenario:</span>
+          <select
+            value={scenarioIndex}
+            onChange={(e) => onScenarioChange(Number(e.target.value))}
+            className="bg-gray-700 text-white text-xs rounded px-2 py-1"
+          >
+            {scenarioNames.map((name, i) => (
+              <option key={i} value={i}>{name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* Faction selector (only in setup) */}
       {status === 'setup' && (
         <div className="flex items-center gap-1">
@@ -107,6 +137,19 @@ export default function TacticalControls({
             </button>
           ))}
         </div>
+      )}
+
+      {/* Smoke ability button */}
+      {(status === 'running' || status === 'paused') && hasSmokeCharges && onToggleSmokeMode && (
+        <button
+          onClick={onToggleSmokeMode}
+          className={`px-2 py-1 rounded text-xs ${
+            smokeMode ? 'bg-gray-400 text-gray-900' : 'bg-gray-700 hover:bg-gray-600'
+          }`}
+          title="Deploy smoke grenade (click tile to place)"
+        >
+          Smoke
+        </button>
       )}
     </div>
   );
