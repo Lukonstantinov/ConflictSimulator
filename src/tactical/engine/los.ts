@@ -40,6 +40,9 @@ export function hasLineOfSight(
     // Buildings block LOS
     if (tile.terrain === 'building') return false;
 
+    // Smoke blocks LOS
+    if (tile.smoke > 0 && losRng.next() < 0.8) return false;
+
     // Trees have 50% chance to block
     if (tile.terrain === 'trees' && losRng.next() < 0.5) return false;
 
@@ -66,16 +69,20 @@ export function computeVisibleTiles(
   map: TacticalMap,
   from: { x: number; y: number },
   sightRange: number,
+  isFlying = false,
 ): Set<string> {
   const visible = new Set<string>();
   visible.add(`${from.x},${from.y}`);
 
+  // Flying units get bonus sight and see over buildings
+  const effectiveRange = isFlying ? sightRange * 1.2 : sightRange;
+
   // Cast rays in all directions
-  const steps = Math.ceil(sightRange * 8);
+  const steps = Math.ceil(effectiveRange * 8);
   for (let i = 0; i < steps; i++) {
     const angle = (i / steps) * Math.PI * 2;
-    const tx = Math.round(from.x + Math.cos(angle) * sightRange);
-    const ty = Math.round(from.y + Math.sin(angle) * sightRange);
+    const tx = Math.round(from.x + Math.cos(angle) * effectiveRange);
+    const ty = Math.round(from.y + Math.sin(angle) * effectiveRange);
 
     // Trace ray
     let x0 = from.x;
@@ -90,12 +97,17 @@ export function computeVisibleTiles(
       if (x0 < 0 || x0 >= map.width || y0 < 0 || y0 >= map.height) break;
 
       const dist = tileDistance(from, { x: x0, y: y0 });
-      if (dist > sightRange) break;
+      if (dist > effectiveRange) break;
 
       visible.add(`${x0},${y0}`);
 
       const tile = map.tiles[y0]?.[x0];
-      if (tile && tile.terrain === 'building' && !(x0 === from.x && y0 === from.y)) break;
+      if (tile) {
+        // Flying units see over buildings; ground units are blocked
+        if (!isFlying && tile.terrain === 'building' && !(x0 === from.x && y0 === from.y)) break;
+        // Smoke blocks vision for ground units
+        if (!isFlying && tile.smoke > 0) break;
+      }
 
       if (x0 === tx && y0 === ty) break;
 
@@ -111,13 +123,13 @@ export function computeVisibleTiles(
 /** Get all visible tiles for a faction */
 export function computeFactionVisibility(
   map: TacticalMap,
-  units: { position: { x: number; y: number }; stats: { sight: number }; state: string; faction: string }[],
+  units: { position: { x: number; y: number }; stats: { sight: number }; state: string; faction: string; flying?: boolean }[],
   faction: string,
 ): Set<string> {
   const visible = new Set<string>();
   for (const unit of units) {
-    if (unit.faction !== faction || unit.state === 'destroyed') continue;
-    const unitVisible = computeVisibleTiles(map, unit.position, unit.stats.sight);
+    if (unit.faction !== faction || unit.state === 'destroyed' || unit.state === 'surrendered') continue;
+    const unitVisible = computeVisibleTiles(map, unit.position, unit.stats.sight, unit.flying);
     for (const key of unitVisible) {
       visible.add(key);
     }

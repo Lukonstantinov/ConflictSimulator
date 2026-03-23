@@ -23,6 +23,7 @@ export function generateTacticalMap(
         elevation: 0,
         cover: 0,
         passable: true,
+        smoke: 0,
       };
     }
   }
@@ -63,6 +64,7 @@ export function generateTacticalMap(
           type,
           health: 100,
           floors,
+          destroyed: false,
         };
 
         for (let dy = 0; dy < bh; dy++) {

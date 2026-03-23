@@ -101,12 +101,14 @@ export default function TacticalCanvas({ onMoveCommand, onAttackCommand }: Props
     renderer.setOnTileClick(handleTileClick);
   }, [handleUnitClick, handleTileClick]);
 
-  // Update units
+  // Update units, smoke, and redraw map if buildings changed
   useEffect(() => {
     const renderer = rendererRef.current;
-    if (!renderer) return;
+    if (!renderer || !map) return;
     renderer.updateUnits(units, selectedUnitIds);
-  }, [units, selectedUnitIds]);
+    renderer.updateSmoke(map);
+    renderer.drawMap(map);
+  }, [units, selectedUnitIds, map]);
 
   // Process new events for effects
   useEffect(() => {

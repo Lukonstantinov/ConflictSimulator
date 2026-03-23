@@ -22,6 +22,7 @@ export class TacticalRenderer {
   private worldContainer: PIXI.Container;
   private gridLayer: PIXI.Graphics;
   private buildingLayer: PIXI.Graphics;
+  private smokeLayer: PIXI.Graphics;
   private fowLayer: PIXI.Graphics;
   private unitLayer: PIXI.Container;
   private effectsLayer: PIXI.Container;
@@ -73,6 +74,10 @@ export class TacticalRenderer {
     this.buildingLayer = new PIXI.Graphics();
     this.buildingLayer.zIndex = 1;
     this.worldContainer.addChild(this.buildingLayer);
+
+    this.smokeLayer = new PIXI.Graphics();
+    this.smokeLayer.zIndex = 2;
+    this.worldContainer.addChild(this.smokeLayer);
 
     this.selectionLayer = new PIXI.Graphics();
     this.selectionLayer.zIndex = 5;
@@ -133,10 +138,10 @@ export class TacticalRenderer {
       this.gridLayer.lineTo(map.width * this.tileSize, y * this.tileSize);
     }
 
-    // Draw building outlines
+    // Draw building outlines (only non-destroyed)
     this.buildingLayer.clear();
     for (const building of map.buildings) {
-      if (building.tiles.length === 0) continue;
+      if (building.tiles.length === 0 || building.destroyed) continue;
 
       const minX = Math.min(...building.tiles.map((t) => t.x));
       const minY = Math.min(...building.tiles.map((t) => t.y));
@@ -148,16 +153,38 @@ export class TacticalRenderer {
       const pw = (maxX - minX + 1) * this.tileSize;
       const ph = (maxY - minY + 1) * this.tileSize;
 
-      this.buildingLayer.lineStyle(2, 0x555555, 0.8);
-      this.buildingLayer.beginFill(0x777777, 0.1);
+      // Show damage via color
+      const healthPct = building.health / 100;
+      const alpha = 0.1 + (1 - healthPct) * 0.3;
+      const borderColor = healthPct > 0.5 ? 0x555555 : 0x884444;
+
+      this.buildingLayer.lineStyle(2, borderColor, 0.8);
+      this.buildingLayer.beginFill(0x777777, alpha);
       this.buildingLayer.drawRect(px, py, pw, ph);
       this.buildingLayer.endFill();
 
-      // Door marker (small notch on bottom edge)
+      // Door marker
       const doorX = px + pw / 2 - 3;
       const doorY = py + ph - 2;
       this.buildingLayer.lineStyle(1, 0x444444, 0.6);
       this.buildingLayer.drawRect(doorX, doorY, 6, 2);
+    }
+  }
+
+  updateSmoke(map: TacticalMap): void {
+    this.smokeLayer.clear();
+    for (let y = 0; y < map.height; y++) {
+      for (let x = 0; x < map.width; x++) {
+        const tile = map.tiles[y][x];
+        if (tile.smoke > 0) {
+          const px = x * this.tileSize;
+          const py = y * this.tileSize;
+          const alpha = Math.min(0.6, tile.smoke / 50 * 0.6);
+          this.smokeLayer.beginFill(0xcccccc, alpha);
+          this.smokeLayer.drawRect(px, py, this.tileSize, this.tileSize);
+          this.smokeLayer.endFill();
+        }
+      }
     }
   }
 
@@ -198,60 +225,10 @@ export class TacticalRenderer {
       const color = FACTION_COLORS[unit.faction];
       const isSelected = selectedIds.includes(unit.id);
 
-      if (unit.type === 'infantry') {
-        // Circle
-        const radius = 8;
-        if (isSelected) {
-          gfx.lineStyle(2, 0x00ffff, 0.8);
-        } else {
-          gfx.lineStyle(1, 0xffffff, 0.3);
-        }
-        gfx.beginFill(color, 0.85);
-        gfx.drawCircle(0, 0, radius);
-        gfx.endFill();
-
-        // Squad count
-        const text = new PIXI.Text(String(unit.squadSize), {
-          fontSize: 9,
-          fill: 0xffffff,
-          fontWeight: 'bold',
-        });
-        text.anchor.set(0.5);
-        text.y = -1;
-        container.addChild(text);
-      } else if (unit.type === 'tank') {
-        // Square with turret line
-        const size = 12;
-        if (isSelected) {
-          gfx.lineStyle(2, 0x00ffff, 0.8);
-        } else {
-          gfx.lineStyle(1, 0xffffff, 0.3);
-        }
-        gfx.beginFill(color, 0.85);
-        gfx.drawRect(-size, -size, size * 2, size * 2);
-        gfx.endFill();
-
-        // Turret line (facing direction)
-        const facingAngle = (unit.facing / 8) * Math.PI * 2 - Math.PI / 2;
-        gfx.lineStyle(2, 0xffffff, 0.7);
-        gfx.moveTo(0, 0);
-        gfx.lineTo(Math.cos(facingAngle) * 14, Math.sin(facingAngle) * 14);
-      } else if (unit.type === 'apc') {
-        // Rounded rectangle
-        const w = 10;
-        const h = 8;
-        if (isSelected) {
-          gfx.lineStyle(2, 0x00ffff, 0.8);
-        } else {
-          gfx.lineStyle(1, 0xffffff, 0.3);
-        }
-        gfx.beginFill(color, 0.85);
-        gfx.drawRoundedRect(-w, -h, w * 2, h * 2, 4);
-        gfx.endFill();
-      }
+      this.drawUnitShape(gfx, unit, color, isSelected);
 
       // Health bar for vehicles
-      if (unit.type !== 'infantry' && unit.health < 100) {
+      if (unit.type !== 'infantry' && unit.type !== 'sniper' && unit.type !== 'atgm' && unit.type !== 'medic' && unit.health < 100) {
         const barWidth = 20;
         const barHeight = 3;
         gfx.beginFill(0x333333, 0.6);
@@ -262,18 +239,46 @@ export class TacticalRenderer {
         gfx.endFill();
       }
 
-      // Morale indicator for suppressed/retreating
+      // Ammo indicator (low ammo warning)
+      if (unit.ammo <= 3 && unit.maxAmmo > 0) {
+        const text = new PIXI.Text('!', { fontSize: 8, fill: 0xffaa00, fontWeight: 'bold' });
+        text.anchor.set(0.5);
+        text.x = 10;
+        text.y = -10;
+        container.addChild(text);
+      }
+
+      // State indicators
       if (unit.state === 'suppressed') {
         gfx.lineStyle(1, 0xffff00, 0.6);
         gfx.drawCircle(0, 0, 14);
       } else if (unit.state === 'retreating') {
         gfx.lineStyle(1, 0xff8800, 0.6);
         gfx.drawCircle(0, 0, 14);
+      } else if (unit.state === 'surrendered') {
+        // White flag indicator
+        gfx.lineStyle(1, 0xffffff, 0.8);
+        gfx.moveTo(6, -6);
+        gfx.lineTo(6, -14);
+        gfx.beginFill(0xffffff, 0.7);
+        gfx.drawRect(6, -14, 6, 4);
+        gfx.endFill();
       }
 
       container.addChild(gfx);
       container.x = px;
       container.y = py;
+
+      // Flying units float above
+      if (unit.flying) {
+        container.y = py - 6;
+        // Shadow
+        const shadow = new PIXI.Graphics();
+        shadow.beginFill(0x000000, 0.2);
+        shadow.drawEllipse(0, 6, 8, 4);
+        shadow.endFill();
+        container.addChildAt(shadow, 0);
+      }
 
       // Make clickable
       container.eventMode = 'static';
@@ -306,6 +311,147 @@ export class TacticalRenderer {
     }
   }
 
+  private drawUnitShape(gfx: PIXI.Graphics, unit: TacticalUnit, color: number, isSelected: boolean): void {
+    const selLine = isSelected ? 2 : 1;
+    const selColor = isSelected ? 0x00ffff : 0xffffff;
+    const selAlpha = isSelected ? 0.8 : 0.3;
+
+    switch (unit.type) {
+      case 'infantry': {
+        gfx.lineStyle(selLine, selColor, selAlpha);
+        gfx.beginFill(color, 0.85);
+        gfx.drawCircle(0, 0, 8);
+        gfx.endFill();
+        // Squad count
+        const text = new PIXI.Text(String(unit.squadSize), { fontSize: 9, fill: 0xffffff, fontWeight: 'bold' });
+        text.anchor.set(0.5);
+        text.y = -1;
+        (gfx.parent || gfx).addChild?.(text);
+        break;
+      }
+      case 'tank': {
+        gfx.lineStyle(selLine, selColor, selAlpha);
+        gfx.beginFill(color, 0.85);
+        gfx.drawRect(-12, -12, 24, 24);
+        gfx.endFill();
+        const facingAngle = (unit.facing / 8) * Math.PI * 2 - Math.PI / 2;
+        gfx.lineStyle(2, 0xffffff, 0.7);
+        gfx.moveTo(0, 0);
+        gfx.lineTo(Math.cos(facingAngle) * 14, Math.sin(facingAngle) * 14);
+        break;
+      }
+      case 'apc': {
+        gfx.lineStyle(selLine, selColor, selAlpha);
+        gfx.beginFill(color, 0.85);
+        gfx.drawRoundedRect(-10, -8, 20, 16, 4);
+        gfx.endFill();
+        break;
+      }
+      case 'artillery': {
+        // Diamond shape
+        gfx.lineStyle(selLine, selColor, selAlpha);
+        gfx.beginFill(color, 0.85);
+        gfx.moveTo(0, -12);
+        gfx.lineTo(10, 0);
+        gfx.lineTo(0, 12);
+        gfx.lineTo(-10, 0);
+        gfx.closePath();
+        gfx.endFill();
+        // Barrel line
+        const facingA = (unit.facing / 8) * Math.PI * 2 - Math.PI / 2;
+        gfx.lineStyle(3, 0xffffff, 0.6);
+        gfx.moveTo(0, 0);
+        gfx.lineTo(Math.cos(facingA) * 16, Math.sin(facingA) * 16);
+        break;
+      }
+      case 'sniper': {
+        // Small triangle
+        gfx.lineStyle(selLine, selColor, selAlpha);
+        gfx.beginFill(color, 0.85);
+        gfx.moveTo(0, -8);
+        gfx.lineTo(7, 6);
+        gfx.lineTo(-7, 6);
+        gfx.closePath();
+        gfx.endFill();
+        // Crosshair indicator
+        gfx.lineStyle(1, 0xffffff, 0.5);
+        gfx.drawCircle(0, -1, 5);
+        gfx.moveTo(-2, -1);
+        gfx.lineTo(2, -1);
+        gfx.moveTo(0, -3);
+        gfx.lineTo(0, 1);
+        break;
+      }
+      case 'atgm': {
+        // Pentagon shape
+        gfx.lineStyle(selLine, selColor, selAlpha);
+        gfx.beginFill(color, 0.85);
+        const sides = 5;
+        for (let i = 0; i < sides; i++) {
+          const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
+          const px = Math.cos(angle) * 8;
+          const py = Math.sin(angle) * 8;
+          if (i === 0) gfx.moveTo(px, py);
+          else gfx.lineTo(px, py);
+        }
+        gfx.closePath();
+        gfx.endFill();
+        // Squad count
+        const atText = new PIXI.Text(String(unit.squadSize), { fontSize: 8, fill: 0xffffff, fontWeight: 'bold' });
+        atText.anchor.set(0.5);
+        atText.y = -1;
+        (gfx.parent || gfx).addChild?.(atText);
+        break;
+      }
+      case 'drone': {
+        // X-shape (quadcopter)
+        gfx.lineStyle(selLine, selColor, selAlpha);
+        gfx.beginFill(color, 0.7);
+        gfx.drawCircle(0, 0, 5);
+        gfx.endFill();
+        gfx.lineStyle(2, color, 0.6);
+        gfx.moveTo(-8, -8); gfx.lineTo(8, 8);
+        gfx.moveTo(8, -8); gfx.lineTo(-8, 8);
+        // Rotor circles at tips
+        gfx.lineStyle(1, 0xffffff, 0.3);
+        gfx.drawCircle(-8, -8, 3);
+        gfx.drawCircle(8, -8, 3);
+        gfx.drawCircle(-8, 8, 3);
+        gfx.drawCircle(8, 8, 3);
+        break;
+      }
+      case 'helicopter': {
+        // Teardrop/heli shape
+        gfx.lineStyle(selLine, selColor, selAlpha);
+        gfx.beginFill(color, 0.85);
+        gfx.moveTo(0, -10);
+        gfx.lineTo(8, 2);
+        gfx.lineTo(4, 10);
+        gfx.lineTo(-4, 10);
+        gfx.lineTo(-8, 2);
+        gfx.closePath();
+        gfx.endFill();
+        // Rotor line
+        gfx.lineStyle(1.5, 0xffffff, 0.4);
+        gfx.moveTo(-12, 0);
+        gfx.lineTo(12, 0);
+        break;
+      }
+      case 'medic': {
+        // Circle with cross
+        gfx.lineStyle(selLine, selColor, selAlpha);
+        gfx.beginFill(color, 0.85);
+        gfx.drawCircle(0, 0, 8);
+        gfx.endFill();
+        // Red/white cross
+        gfx.lineStyle(2, 0xffffff, 0.9);
+        gfx.moveTo(-4, 0); gfx.lineTo(4, 0);
+        gfx.moveTo(0, -4); gfx.lineTo(0, 4);
+        break;
+      }
+    }
+  }
+
   showShotEffects(events: TacticalEvent[]): void {
     // Clear old shot lines
     for (const line of this.shotLines) {
@@ -314,8 +460,11 @@ export class TacticalRenderer {
     }
     this.shotLines = [];
 
-    const shotEvents = events.filter((e) => e.type === 'shot_fired').slice(-20);
-    for (const evt of shotEvents) {
+    const recentEvents = events.slice(-30);
+
+    for (const evt of recentEvents) {
+      if (evt.type !== 'shot_fired' && evt.type !== 'artillery_impact') continue;
+
       const d = evt.details;
       const fromX = (d.fromX as number) * this.tileSize + this.tileSize / 2;
       const fromY = (d.fromY as number) * this.tileSize + this.tileSize / 2;
@@ -323,34 +472,48 @@ export class TacticalRenderer {
       const toY = (d.toY as number) * this.tileSize + this.tileSize / 2;
 
       const line = new PIXI.Graphics();
-      line.lineStyle(1, 0xff4444, 0.5);
-      line.moveTo(fromX, fromY);
-      line.lineTo(toX, toY);
+
+      if (evt.type === 'artillery_impact') {
+        // Artillery: arc + explosion
+        line.lineStyle(1.5, 0xff8800, 0.6);
+        line.moveTo(fromX, fromY);
+        // Simplified arc
+        const midX = (fromX + toX) / 2;
+        const midY = Math.min(fromY, toY) - 40;
+        line.quadraticCurveTo(midX, midY, toX, toY);
+        // Explosion burst at target
+        line.lineStyle(2, 0xff4400, 0.7);
+        line.drawCircle(toX, toY, 12);
+        line.lineStyle(1, 0xff6600, 0.4);
+        line.drawCircle(toX, toY, 20);
+      } else {
+        line.lineStyle(1, 0xff4444, 0.5);
+        line.moveTo(fromX, fromY);
+        line.lineTo(toX, toY);
+      }
+
       this.effectsLayer.addChild(line);
       this.shotLines.push(line);
 
-      // Auto-remove after 300ms
+      // Auto-remove
+      const duration = evt.type === 'artillery_impact' ? 500 : 300;
       setTimeout(() => {
         this.effectsLayer.removeChild(line);
         line.destroy();
         const idx = this.shotLines.indexOf(line);
         if (idx >= 0) this.shotLines.splice(idx, 1);
-      }, 300);
+      }, duration);
     }
   }
 
   private setupClickHandlers(canvas: HTMLCanvasElement): void {
     canvas.addEventListener('pointerdown', (e) => {
-      // Only handle left click (not when panning)
       if (e.button !== 0 || e.shiftKey) return;
 
-      // Check if we clicked on a unit (handled by pixi events)
-      // If not, it's a tile click
       const rect = canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
 
-      // Convert to world coords
       const worldX = (mx - this.panX) / this.zoom;
       const worldY = (my - this.panY) / this.zoom;
 
@@ -358,14 +521,12 @@ export class TacticalRenderer {
       const tileY = Math.floor(worldY / this.tileSize);
 
       if (tileX >= 0 && tileX < this.mapWidth && tileY >= 0 && tileY < this.mapHeight) {
-        // Delay slightly to let unit click handler run first
         setTimeout(() => {
           this.onTileClick?.(tileX, tileY, e.button, e.shiftKey);
         }, 10);
       }
     });
 
-    // Right click for attack
     canvas.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();

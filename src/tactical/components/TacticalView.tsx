@@ -1,10 +1,10 @@
-import { useCallback, useRef, useEffect } from 'react';
+import { useCallback, useRef, useEffect, useState } from 'react';
 import TacticalCanvas from './TacticalCanvas';
 import TacticalHUD from './TacticalHUD';
 import TacticalControls from './TacticalControls';
 import { useTacticalStore } from '../store/tacticalStore';
 import { TacticalEngine } from '../engine/TacticalEngine';
-import { getVillageAssaultScenario, loadScenario } from '../map/scenarios';
+import { TACTICAL_SCENARIOS, loadScenario } from '../map/scenarios';
 
 export default function TacticalView() {
   const engineRef = useRef<TacticalEngine | null>(null);
@@ -14,16 +14,24 @@ export default function TacticalView() {
   const updateState = useTacticalStore((s) => s.updateState);
   const setSpeed = useTacticalStore((s) => s.setSpeed);
   const playerFaction = useTacticalStore((s) => s.playerFaction);
-  const reset = useTacticalStore((s) => s.reset);
+
+  const [scenarioIndex, setScenarioIndex] = useState(0);
+  const [smokeMode, setSmokeMode] = useState(false);
 
   // Initialize scenario on mount
   useEffect(() => {
     if (!map) {
-      const scenario = getVillageAssaultScenario();
+      const scenario = TACTICAL_SCENARIOS[scenarioIndex]();
       const { map: scenarioMap, units } = loadScenario(scenario);
       initGame(scenarioMap, units, 'attacker');
     }
   }, []);
+
+  const loadCurrentScenario = useCallback((faction: 'attacker' | 'defender', idx?: number) => {
+    const scenario = TACTICAL_SCENARIOS[idx ?? scenarioIndex]();
+    const { map: scenarioMap, units } = loadScenario(scenario);
+    initGame(scenarioMap, units, faction);
+  }, [initGame, scenarioIndex]);
 
   const handleStart = useCallback(() => {
     const state = useTacticalStore.getState();
@@ -38,6 +46,7 @@ export default function TacticalView() {
 
     engine.start();
     useTacticalStore.setState({ status: 'running' });
+    setSmokeMode(false);
   }, [updateState]);
 
   const handlePause = useCallback(() => {
@@ -51,12 +60,9 @@ export default function TacticalView() {
   const handleStop = useCallback(() => {
     engineRef.current?.stop();
     engineRef.current = null;
-
-    // Reinitialize scenario
-    const scenario = getVillageAssaultScenario();
-    const { map: scenarioMap, units } = loadScenario(scenario);
-    initGame(scenarioMap, units, playerFaction);
-  }, [initGame, playerFaction]);
+    setSmokeMode(false);
+    loadCurrentScenario(playerFaction);
+  }, [loadCurrentScenario, playerFaction]);
 
   const handleSpeedChange = useCallback((speed: number) => {
     setSpeed(speed);
@@ -64,15 +70,24 @@ export default function TacticalView() {
   }, [setSpeed]);
 
   const handleFactionChange = useCallback((faction: 'attacker' | 'defender') => {
-    // Reinitialize with new faction
-    const scenario = getVillageAssaultScenario();
-    const { map: scenarioMap, units } = loadScenario(scenario);
-    initGame(scenarioMap, units, faction);
-  }, [initGame]);
+    loadCurrentScenario(faction);
+  }, [loadCurrentScenario]);
+
+  const handleScenarioChange = useCallback((idx: number) => {
+    setScenarioIndex(idx);
+    const state = useTacticalStore.getState();
+    loadCurrentScenario(state.playerFaction, idx);
+  }, [loadCurrentScenario]);
 
   const handleMoveCommand = useCallback((unitIds: string[], target: { x: number; y: number }) => {
+    if (smokeMode) {
+      // Deploy smoke instead of move
+      engineRef.current?.queueCommand({ type: 'smoke', unitIds, target });
+      setSmokeMode(false);
+      return;
+    }
     engineRef.current?.queueCommand({ type: 'move', unitIds, target });
-  }, []);
+  }, [smokeMode]);
 
   const handleAttackCommand = useCallback((unitIds: string[], targetUnitId: string) => {
     const targetUnit = useTacticalStore.getState().units.find((u) => u.id === targetUnitId);
@@ -104,6 +119,10 @@ export default function TacticalView() {
           onStop={handleStop}
           onSpeedChange={handleSpeedChange}
           onFactionChange={handleFactionChange}
+          onScenarioChange={handleScenarioChange}
+          scenarioIndex={scenarioIndex}
+          smokeMode={smokeMode}
+          onToggleSmokeMode={() => setSmokeMode(!smokeMode)}
         />
       </div>
 

@@ -1,4 +1,4 @@
-import type { TacticalMap, TacticalTile, TacticalUnit } from '../types';
+import type { TacticalMap, TacticalTile, TacticalUnit, TacticalUnitType } from '../types';
 import { TERRAIN_SPEED } from '../types';
 
 interface PathNode {
@@ -15,18 +15,24 @@ export function findPath(
   map: TacticalMap,
   start: { x: number; y: number },
   end: { x: number; y: number },
-  unitType: TacticalUnit['type'],
+  unitType: TacticalUnitType,
   units: TacticalUnit[],
 ): { x: number; y: number }[] {
   const endTile = map.tiles[end.y]?.[end.x];
-  if (!endTile || !endTile.passable) return [];
+  if (!endTile) return [];
 
-  // Vehicles can't enter buildings
-  if (unitType !== 'infantry' && endTile.terrain === 'building') return [];
+  const isFlying = unitType === 'drone' || unitType === 'helicopter';
+
+  // Flying units can go anywhere except off-map
+  if (!isFlying) {
+    if (!endTile.passable) return [];
+    // Vehicles can't enter buildings
+    if (!isInfantryType(unitType) && endTile.terrain === 'building') return [];
+  }
 
   const occupiedSet = new Set<string>();
   for (const u of units) {
-    if (u.state !== 'destroyed') {
+    if (u.state !== 'destroyed' && u.state !== 'surrendered') {
       occupiedSet.add(`${u.position.x},${u.position.y}`);
     }
   }
@@ -89,14 +95,19 @@ export function findPath(
       if (closed.has(nKey)) continue;
 
       const tile = map.tiles[ny][nx];
-      if (!tile.passable) continue;
-      if (tile.terrain === 'water') continue;
-      if (unitType !== 'infantry' && tile.terrain === 'building') continue;
 
-      // Don't path through occupied tiles (except destination)
-      if (!(nx === end.x && ny === end.y) && occupiedSet.has(nKey)) continue;
+      if (isFlying) {
+        // Flying units ignore terrain passability, just check bounds
+        // But don't stack on occupied ground tiles
+        if (!(nx === end.x && ny === end.y) && occupiedSet.has(nKey)) continue;
+      } else {
+        if (!tile.passable) continue;
+        if (tile.terrain === 'water') continue;
+        if (!isInfantryType(unitType) && tile.terrain === 'building') continue;
+        if (!(nx === end.x && ny === end.y) && occupiedSet.has(nKey)) continue;
+      }
 
-      const moveCost = 1 / TERRAIN_SPEED[tile.terrain];
+      const moveCost = isFlying ? 0.5 : (1 / TERRAIN_SPEED[tile.terrain]);
       const isDiagonal = dir.dx !== 0 && dir.dy !== 0;
       const g = current.g + moveCost * (isDiagonal ? 1.414 : 1);
       const hVal = h(nx, ny);
@@ -132,7 +143,7 @@ export function moveUnit(
     return true;
   }
 
-  const terrainSpeed = TERRAIN_SPEED[tile.terrain];
+  const terrainSpeed = unit.flying ? 1.5 : TERRAIN_SPEED[tile.terrain];
   const moveSpeed = unit.stats.speed * terrainSpeed / tickRate;
 
   const dx = nextTile.x - unit.position.x;
@@ -141,14 +152,18 @@ export function moveUnit(
 
   if (dist <= moveSpeed) {
     // Arrived at next waypoint
-    // Clear old occupied
-    const oldTile = map.tiles[unit.position.y]?.[unit.position.x];
-    if (oldTile && oldTile.occupied === unit.id) {
-      oldTile.occupied = undefined;
+    // Clear old occupied (flying units don't occupy ground)
+    if (!unit.flying) {
+      const oldTile = map.tiles[unit.position.y]?.[unit.position.x];
+      if (oldTile && oldTile.occupied === unit.id) {
+        oldTile.occupied = undefined;
+      }
     }
 
     unit.position = { x: nextTile.x, y: nextTile.y };
-    tile.occupied = unit.id;
+    if (!unit.flying) {
+      tile.occupied = unit.id;
+    }
     unit.path.shift();
 
     // Update facing
@@ -160,4 +175,9 @@ export function moveUnit(
   }
 
   return false; // Still moving
+}
+
+/** Check if a unit type is infantry-like (can enter buildings) */
+function isInfantryType(type: TacticalUnitType): boolean {
+  return type === 'infantry' || type === 'sniper' || type === 'atgm' || type === 'medic';
 }
