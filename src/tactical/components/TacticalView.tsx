@@ -2,6 +2,7 @@ import { useCallback, useRef, useEffect, useState } from 'react';
 import TacticalCanvas from './TacticalCanvas';
 import TacticalHUD from './TacticalHUD';
 import TacticalControls from './TacticalControls';
+import MapEditorPanel from './MapEditorPanel';
 import { useTacticalStore } from '../store/tacticalStore';
 import { TacticalEngine } from '../engine/TacticalEngine';
 import { TACTICAL_SCENARIOS, loadScenario } from '../map/scenarios';
@@ -14,6 +15,7 @@ export default function TacticalView() {
   const updateState = useTacticalStore((s) => s.updateState);
   const setSpeed = useTacticalStore((s) => s.setSpeed);
   const playerFaction = useTacticalStore((s) => s.playerFaction);
+  const editorMode = useTacticalStore((s) => s.editorMode);
 
   const [scenarioIndex, setScenarioIndex] = useState(0);
   const [smokeMode, setSmokeMode] = useState(false);
@@ -81,7 +83,6 @@ export default function TacticalView() {
 
   const handleMoveCommand = useCallback((unitIds: string[], target: { x: number; y: number }) => {
     if (smokeMode) {
-      // Deploy smoke instead of move
       engineRef.current?.queueCommand({ type: 'smoke', unitIds, target });
       setSmokeMode(false);
       return;
@@ -126,13 +127,18 @@ export default function TacticalView() {
         />
       </div>
 
-      {/* Map */}
-      <div className="relative flex-1" style={{ minHeight: 500 }}>
-        <TacticalCanvas
-          onMoveCommand={handleMoveCommand}
-          onAttackCommand={handleAttackCommand}
-        />
-        <TacticalHUD />
+      {/* Map + Editor Panel */}
+      <div className="flex flex-1 min-h-0">
+        <div className="relative flex-1" style={{ minHeight: 500 }}>
+          <TacticalCanvas
+            onMoveCommand={handleMoveCommand}
+            onAttackCommand={handleAttackCommand}
+          />
+          <TacticalHUD />
+        </div>
+
+        {/* Editor panel slides in when editorMode is on */}
+        {editorMode && status === 'setup' && <MapEditorPanel />}
       </div>
     </div>
   );

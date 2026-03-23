@@ -20,6 +20,15 @@ export default function TacticalCanvas({ onMoveCommand, onAttackCommand }: Props
   const playerFaction = useTacticalStore((s) => s.playerFaction);
   const lastProcessedEvent = useRef(0);
 
+  const editorMode    = useTacticalStore((s) => s.editorMode);
+  const editorTool    = useTacticalStore((s) => s.editorTool);
+  const paintTiles    = useTacticalStore((s) => s.paintTiles);
+  const placeEditorUnit = useTacticalStore((s) => s.placeEditorUnit);
+  const eraseAt       = useTacticalStore((s) => s.eraseAt);
+
+  // Track if mouse button is held for drag-painting
+  const editorPainting = useRef(false);
+
   // Initialize renderer
   useEffect(() => {
     if (!canvasRef.current || !map) return;
@@ -38,8 +47,30 @@ export default function TacticalCanvas({ onMoveCommand, onAttackCommand }: Props
     };
   }, [map?.id]);
 
+  // Editor tile interaction (called by renderer tile click + drag)
+  const handleEditorTileInteract = useCallback((x: number, y: number) => {
+    const state = useTacticalStore.getState();
+    if (state.editorTool === 'terrain') {
+      state.paintTiles(x, y);
+    } else if (state.editorTool === 'unit') {
+      state.placeEditorUnit(x, y);
+    } else if (state.editorTool === 'erase') {
+      state.eraseAt(x, y);
+    }
+  }, [paintTiles, placeEditorUnit, eraseAt]);
+
   // Setup click handlers
   const handleUnitClick = useCallback((unitId: string, shift: boolean) => {
+    if (editorMode) {
+      // In editor mode, clicking a unit with erase tool removes it
+      if (editorTool === 'erase') {
+        useTacticalStore.setState((s) => ({
+          units: s.units.filter((u) => u.id !== unitId),
+        }));
+      }
+      return;
+    }
+
     const unit = units.find((u) => u.id === unitId);
     if (!unit) return;
 
@@ -50,14 +81,17 @@ export default function TacticalCanvas({ onMoveCommand, onAttackCommand }: Props
         selectUnits([unitId]);
       }
     } else if (selectedUnitIds.length > 0) {
-      // Right-click behavior on enemy: attack
       onAttackCommand(selectedUnitIds, unitId);
     }
-  }, [units, playerFaction, selectedUnitIds, selectUnits, addToSelection, onAttackCommand]);
+  }, [editorMode, editorTool, units, playerFaction, selectedUnitIds, selectUnits, addToSelection, onAttackCommand]);
 
   const handleTileClick = useCallback((x: number, y: number, button: number, _shift: boolean) => {
+    if (editorMode) {
+      handleEditorTileInteract(x, y);
+      return;
+    }
+
     if (button === 0 && selectedUnitIds.length > 0) {
-      // Check if clicking on an enemy unit
       const enemyUnit = units.find(
         (u) => u.position.x === x && u.position.y === y &&
                u.faction !== playerFaction && u.state !== 'destroyed',
@@ -66,11 +100,8 @@ export default function TacticalCanvas({ onMoveCommand, onAttackCommand }: Props
         onAttackCommand(selectedUnitIds, enemyUnit.id);
         return;
       }
-
-      // Move command
       onMoveCommand(selectedUnitIds, { x, y });
     } else if (button === 0 && selectedUnitIds.length === 0) {
-      // Check if clicking on own unit
       const ownUnit = units.find(
         (u) => u.position.x === x && u.position.y === y &&
                u.faction === playerFaction && u.state !== 'destroyed',
@@ -81,7 +112,6 @@ export default function TacticalCanvas({ onMoveCommand, onAttackCommand }: Props
         clearSelection();
       }
     } else if (button === 2 && selectedUnitIds.length > 0) {
-      // Right click: attack if enemy, else move
       const enemyUnit = units.find(
         (u) => u.position.x === x && u.position.y === y &&
                u.faction !== playerFaction && u.state !== 'destroyed',
@@ -92,7 +122,7 @@ export default function TacticalCanvas({ onMoveCommand, onAttackCommand }: Props
         onMoveCommand(selectedUnitIds, { x, y });
       }
     }
-  }, [selectedUnitIds, units, playerFaction, selectUnits, clearSelection, onMoveCommand, onAttackCommand]);
+  }, [editorMode, selectedUnitIds, units, playerFaction, selectUnits, clearSelection, onMoveCommand, onAttackCommand, handleEditorTileInteract]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -100,6 +130,40 @@ export default function TacticalCanvas({ onMoveCommand, onAttackCommand }: Props
     renderer.setOnUnitClick(handleUnitClick);
     renderer.setOnTileClick(handleTileClick);
   }, [handleUnitClick, handleTileClick]);
+
+  // Editor drag painting via canvas pointer events
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const renderer = rendererRef.current;
+    if (!canvas || !renderer) return;
+    if (!editorMode) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button === 0 && !e.shiftKey) editorPainting.current = true;
+    };
+    const onPointerUp = () => { editorPainting.current = false; };
+    const onPointerMove = (e: PointerEvent) => {
+      if (!editorPainting.current) return;
+      // Convert screen coords to tile coords via renderer
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const { x: tileX, y: tileY } = renderer.screenToTile(mx, my);
+      if (tileX >= 0 && tileY >= 0) {
+        handleEditorTileInteract(tileX, tileY);
+      }
+    };
+
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointermove', onPointerMove);
+
+    return () => {
+      canvas.removeEventListener('pointerdown', onPointerDown);
+      canvas.removeEventListener('pointerup', onPointerUp);
+      canvas.removeEventListener('pointermove', onPointerMove);
+    };
+  }, [editorMode, handleEditorTileInteract]);
 
   // Update units, smoke, and redraw map if buildings changed
   useEffect(() => {
@@ -130,7 +194,7 @@ export default function TacticalCanvas({ onMoveCommand, onAttackCommand }: Props
       <canvas
         ref={canvasRef}
         className="w-full h-full block"
-        style={{ touchAction: 'none', objectFit: 'contain' }}
+        style={{ touchAction: 'none', objectFit: 'contain', cursor: editorMode ? 'crosshair' : 'default' }}
       />
     </div>
   );
