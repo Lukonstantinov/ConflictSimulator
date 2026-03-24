@@ -1,10 +1,14 @@
 import { useTacticalStore } from '../store/tacticalStore';
+import { useUIStore } from '../../store/uiStore';
+import { useSimStore } from '../../store/simStore';
+import { simulationRunner } from '../../engine/worker';
 
 export default function TacticalHUD() {
   const units = useTacticalStore((s) => s.units);
   const selectedUnitIds = useTacticalStore((s) => s.selectedUnitIds);
   const tick = useTacticalStore((s) => s.tick);
   const status = useTacticalStore((s) => s.status);
+  const strategicBattleId = useTacticalStore((s) => s.strategicBattleId);
 
   const selectedUnits = units.filter((u) => selectedUnitIds.includes(u.id));
 
@@ -31,10 +35,25 @@ export default function TacticalHUD() {
       {/* Victory/Defeat banner */}
       {(status === 'victory' || status === 'defeat') && (
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-          <div className={`text-4xl font-bold px-8 py-4 rounded-lg ${
+          <div className={`text-center px-8 py-4 rounded-lg ${
             status === 'victory' ? 'bg-green-800 text-green-200' : 'bg-red-800 text-red-200'
           }`}>
-            {status === 'victory' ? 'VICTORY' : 'DEFEAT'}
+            <div className="text-4xl font-bold">
+              {status === 'victory' ? 'VICTORY' : 'DEFEAT'}
+            </div>
+            {strategicBattleId && (
+              <button
+                onClick={() => {
+                  useTacticalStore.getState().reset();
+                  useUIStore.getState().setGameMode('strategic');
+                  useSimStore.getState().setStatus('running');
+                  simulationRunner.resume();
+                }}
+                className="mt-3 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm"
+              >
+                Return to Strategic Map
+              </button>
+            )}
           </div>
         </div>
       )}

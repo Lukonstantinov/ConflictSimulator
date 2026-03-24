@@ -385,17 +385,22 @@ Hardcoded first scenario:
 - Save/load tactical maps (IndexedDB, same pattern as strategic maps)
 - City size presets: hamlet (30x20), village (60x40), town (100x60)
 
-## Phase 5: Strategic-Tactical Integration (outline)
-- When battle occurs on strategic map, option to "resolve tactically"
-- Strategic army composition maps to tactical units
-- Tactical outcome (% casualties, buildings destroyed) feeds back
-- Auto-resolve option for AI-vs-AI battles
+## Phase 5: Strategic-Tactical Integration (IMPLEMENTED v3.5.0)
+- ✅ Bridge module (`src/tactical/bridge.ts`): army→units, region→map, result→army
+- ✅ Battle prompt dialog: Resolve Tactically / Auto-Resolve / Skip
+- ✅ Army composition mapping: heavy→tanks/ATGMs, light→infantry/APCs, levy→smaller infantry
+- ✅ Region terrain → tactical map preset (forest→forest, coast→coastal, etc.)
+- ✅ Tactical result mapping: survival rates feed back to army size/composition
+- ✅ Auto-resolve for AI-vs-AI battles
+- ✅ Battle mode setting: Auto vs Ask in SimControls
+- ✅ Return to Strategic Map button after tactical battle
 
-## Phase 6: UI Polish + Mobile (outline)
-- Refined paper-map aesthetics (parchment textures, hand-drawn style borders)
-- Mobile touch controls: tap to select, tap to move, long-press for attack
-- Sound effects (gunfire, explosions, radio chatter)
-- Tutorial scenario
+## Phase 6: UI Polish + Mobile (IMPLEMENTED v3.5.0)
+- ✅ Mobile touch controls: pinch-to-zoom, two-finger pan, tap-to-select, long-press for attack
+- ✅ Keyboard shortcuts: Space, 1-4, Tab, Ctrl+A, Escape, ?
+- ✅ Help modal with full controls reference
+- ✅ Tutorial scenario: "Basic Commands" with guided overlay
+- Remaining: sound effects, parchment textures (deferred to future)
 
 ## Phase 7: Multiplayer Foundation (outline)
 - Player vs Player over network (WebSocket or WebRTC)

@@ -517,23 +517,77 @@ export class TacticalRenderer {
   }
 
   private setupClickHandlers(canvas: HTMLCanvasElement): void {
+    // Long-press timer for mobile "right-click" equivalent
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+    let longPressTriggered = false;
+    let pointerDownPos = { x: 0, y: 0 };
+
     canvas.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.shiftKey) return;
 
       const rect = canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
+      pointerDownPos = { x: e.clientX, y: e.clientY };
+      longPressTriggered = false;
 
       const worldX = (mx - this.panX) / this.zoom;
       const worldY = (my - this.panY) / this.zoom;
-
       const tileX = Math.floor(worldX / this.tileSize);
       const tileY = Math.floor(worldY / this.tileSize);
 
+      // Start long-press timer (500ms) for mobile attack command
+      if (e.pointerType === 'touch') {
+        longPressTimer = setTimeout(() => {
+          longPressTriggered = true;
+          if (tileX >= 0 && tileX < this.mapWidth && tileY >= 0 && tileY < this.mapHeight) {
+            this.onTileClick?.(tileX, tileY, 2, false); // Simulate right-click
+          }
+        }, 500);
+      }
+
       if (tileX >= 0 && tileX < this.mapWidth && tileY >= 0 && tileY < this.mapHeight) {
-        setTimeout(() => {
-          this.onTileClick?.(tileX, tileY, e.button, e.shiftKey);
-        }, 10);
+        if (e.pointerType !== 'touch') {
+          setTimeout(() => {
+            this.onTileClick?.(tileX, tileY, e.button, e.shiftKey);
+          }, 10);
+        }
+      }
+    });
+
+    canvas.addEventListener('pointerup', (e) => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+
+      // Touch tap (not long-press, not drag)
+      if (e.pointerType === 'touch' && !longPressTriggered) {
+        const moved = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+        if (moved < 10) {
+          const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+          const mx = e.clientX - rect.left;
+          const my = e.clientY - rect.top;
+          const worldX = (mx - this.panX) / this.zoom;
+          const worldY = (my - this.panY) / this.zoom;
+          const tileX = Math.floor(worldX / this.tileSize);
+          const tileY = Math.floor(worldY / this.tileSize);
+
+          if (tileX >= 0 && tileX < this.mapWidth && tileY >= 0 && tileY < this.mapHeight) {
+            this.onTileClick?.(tileX, tileY, 0, false);
+          }
+        }
+      }
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      // Cancel long-press if finger moved too far
+      if (longPressTimer && e.pointerType === 'touch') {
+        const moved = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+        if (moved > 10) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
       }
     });
 
@@ -554,6 +608,7 @@ export class TacticalRenderer {
   }
 
   private setupCameraControls(canvas: HTMLCanvasElement): void {
+    // Mouse wheel zoom
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
@@ -572,6 +627,7 @@ export class TacticalRenderer {
       this.applyCamera();
     }, { passive: false });
 
+    // Middle mouse or shift+drag to pan
     canvas.addEventListener('pointerdown', (e) => {
       if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
         this.isDragging = true;
@@ -591,6 +647,68 @@ export class TacticalRenderer {
 
     canvas.addEventListener('pointerup', () => { this.isDragging = false; });
     canvas.addEventListener('pointerleave', () => { this.isDragging = false; });
+
+    // Touch: pinch-to-zoom + two-finger pan
+    let lastTouchDist = 0;
+    let lastTouchCenter = { x: 0, y: 0 };
+    let isTouchPanning = false;
+
+    canvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        isTouchPanning = true;
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        lastTouchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        lastTouchCenter = {
+          x: (t1.clientX + t2.clientX) / 2,
+          y: (t1.clientY + t2.clientY) / 2,
+        };
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2 && isTouchPanning) {
+        e.preventDefault();
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+
+        // Pinch zoom
+        const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        if (lastTouchDist > 0) {
+          const scale = newDist / lastTouchDist;
+          const rect = canvas.getBoundingClientRect();
+          const cx = (t1.clientX + t2.clientX) / 2 - rect.left;
+          const cy = (t1.clientY + t2.clientY) / 2 - rect.top;
+
+          const worldXBefore = (cx - this.panX) / this.zoom;
+          const worldYBefore = (cy - this.panY) / this.zoom;
+
+          this.zoom = Math.max(0.5, Math.min(4, this.zoom * scale));
+          this.panX = cx - worldXBefore * this.zoom;
+          this.panY = cy - worldYBefore * this.zoom;
+        }
+        lastTouchDist = newDist;
+
+        // Two-finger pan
+        const newCenter = {
+          x: (t1.clientX + t2.clientX) / 2,
+          y: (t1.clientY + t2.clientY) / 2,
+        };
+        this.panX += newCenter.x - lastTouchCenter.x;
+        this.panY += newCenter.y - lastTouchCenter.y;
+        lastTouchCenter = newCenter;
+
+        this.applyCamera();
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', (e) => {
+      if (e.touches.length < 2) {
+        isTouchPanning = false;
+        lastTouchDist = 0;
+      }
+    });
   }
 
   private applyCamera(): void {

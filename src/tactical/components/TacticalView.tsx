@@ -3,9 +3,15 @@ import TacticalCanvas from './TacticalCanvas';
 import TacticalHUD from './TacticalHUD';
 import TacticalControls from './TacticalControls';
 import MapEditorPanel from './MapEditorPanel';
+import KeyboardShortcuts from './KeyboardShortcuts';
+import TutorialOverlay from './TutorialOverlay';
 import { useTacticalStore } from '../store/tacticalStore';
 import { TacticalEngine } from '../engine/TacticalEngine';
 import { TACTICAL_SCENARIOS, loadScenario } from '../map/scenarios';
+import { computeBattleResult } from '../bridge';
+import { simulationRunner } from '../../engine/worker';
+import { useUIStore } from '../../store/uiStore';
+import { useSimStore } from '../../store/simStore';
 
 export default function TacticalView() {
   const engineRef = useRef<TacticalEngine | null>(null);
@@ -17,17 +23,43 @@ export default function TacticalView() {
   const playerFaction = useTacticalStore((s) => s.playerFaction);
   const editorMode = useTacticalStore((s) => s.editorMode);
 
+  const strategicBattleId = useTacticalStore((s) => s.strategicBattleId);
+  const strategicAttackerArmy = useTacticalStore((s) => s.strategicAttackerArmy);
+  const strategicDefenderArmy = useTacticalStore((s) => s.strategicDefenderArmy);
+
   const [scenarioIndex, setScenarioIndex] = useState(0);
   const [smokeMode, setSmokeMode] = useState(false);
 
-  // Initialize scenario on mount
+  // Initialize scenario on mount (only if not launched from strategic mode)
   useEffect(() => {
-    if (!map) {
+    if (!map && !strategicBattleId) {
       const scenario = TACTICAL_SCENARIOS[scenarioIndex]();
       const { map: scenarioMap, units } = loadScenario(scenario);
       initGame(scenarioMap, units, 'attacker');
     }
   }, []);
+
+  // Handle strategic battle result when tactical battle finishes
+  useEffect(() => {
+    if (!strategicBattleId || !strategicAttackerArmy || !strategicDefenderArmy) return;
+    if (status !== 'victory' && status !== 'defeat') return;
+
+    const units = useTacticalStore.getState().units;
+    const result = computeBattleResult(
+      strategicBattleId,
+      units,
+      strategicAttackerArmy,
+      strategicDefenderArmy,
+    );
+
+    // Apply result to strategic simulation
+    simulationRunner.applyTacticalResult(
+      result.battleId,
+      result.attackerWins,
+      result.attackerSurvivalRate,
+      result.defenderSurvivalRate,
+    );
+  }, [status, strategicBattleId, strategicAttackerArmy, strategicDefenderArmy]);
 
   const loadCurrentScenario = useCallback((faction: 'attacker' | 'defender', idx?: number) => {
     const scenario = TACTICAL_SCENARIOS[idx ?? scenarioIndex]();
@@ -111,6 +143,14 @@ export default function TacticalView() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
+      {/* Keyboard shortcuts + help modal */}
+      <KeyboardShortcuts
+        onStart={handleStart}
+        onPause={handlePause}
+        onResume={handleResume}
+        onSpeedChange={handleSpeedChange}
+      />
+
       {/* Controls bar */}
       <div className="bg-gray-800 px-3 py-2 border-b border-gray-700">
         <TacticalControls
@@ -135,6 +175,7 @@ export default function TacticalView() {
             onAttackCommand={handleAttackCommand}
           />
           <TacticalHUD />
+          {scenarioIndex === 0 && <TutorialOverlay />}
         </div>
 
         {/* Editor panel slides in when editorMode is on */}

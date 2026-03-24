@@ -16,6 +16,7 @@ import { exportMapJSON, importMapJSON, downloadFile, readFileAsText } from './ut
 import type { VictoryConfig, VictoryCondition } from './types';
 
 const TacticalView = lazy(() => import('./tactical/components/TacticalView'));
+import TacticalBattlePrompt from './components/TacticalBattlePrompt';
 
 const DEFAULT_REGION_COUNT = 60;
 
@@ -33,6 +34,7 @@ export default function App() {
   const gameMode = useUIStore((s) => s.gameMode);
   const setGameMode = useUIStore((s) => s.setGameMode);
   const simStatus = useSimStore((s) => s.status);
+  const pendingTacticalBattle = useSimStore((s) => s.pendingTacticalBattle);
 
   const [seedInput, setSeedInput] = useState('');
   const [regionCount, setRegionCount] = useState(DEFAULT_REGION_COUNT);
@@ -114,6 +116,9 @@ export default function App() {
 
   return (
     <div className="flex flex-col md:flex-row min-h-[100dvh] bg-gray-900 text-white">
+      {/* Tactical Battle Prompt */}
+      {pendingTacticalBattle && <TacticalBattlePrompt />}
+
       {/* Toast Notifications */}
       <ToastNotifications />
 

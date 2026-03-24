@@ -1,4 +1,4 @@
-import type { Country, Region, Army, SimEvent, StateDelta, VictoryConfig, BorderFront, TradeRoute, ResourceType, ResourceStockpile } from '../types';
+import type { Country, Region, Army, SimEvent, StateDelta, VictoryConfig, BorderFront, TradeRoute, ResourceType, ResourceStockpile, PendingTacticalBattleInfo } from '../types';
 import { SeededRNG } from '../utils/random';
 import { processEconomy, getStrategyUnitMix, emptyStockpile, getResourceDeficitPenalty } from './economy';
 import { resolveBattle, resolveBorderCombat, updateMorale, defaultUnits, applyLossesToUnits, getTotalUnits } from './combat';
@@ -20,6 +20,7 @@ export class SimulationEngine {
   private victoryConfig: VictoryConfig;
   private borderFronts: BorderFront[] = [];
   private tradeRoutes: TradeRoute[] = [];
+  private pendingTacticalBattle: PendingTacticalBattleInfo | null = null;
 
   constructor(
     regions: Region[],
@@ -245,6 +246,33 @@ export class SimulationEngine {
               };
               this.borderFronts.push(front);
 
+              // Emit tactical battle available event
+              this.pendingTacticalBattle = {
+                id: frontId,
+                attackerCountryId: country.id,
+                defenderCountryId: defenderId,
+                attackerArmyId: arrivedArmy.id,
+                defenderArmyId: defArmy.id,
+                regionId: targetRegion.id,
+                attackerName: country.name,
+                defenderName: defender.name,
+                attackerColor: country.color,
+                defenderColor: defender.color,
+                terrain: targetRegion.terrain,
+                strategicTick: this.tick,
+              };
+              events.push({
+                tick: this.tick,
+                type: 'tactical_battle_available',
+                actors: [country.id, defenderId],
+                details: {
+                  attackerName: country.name,
+                  defenderName: defender.name,
+                  region: targetRegion.id,
+                  frontId,
+                },
+              });
+
               // Keep attacker at their side of the border
               processedArmies.push({
                 ...arrivedArmy,
@@ -336,6 +364,9 @@ export class SimulationEngine {
       .filter((c) => c.isAlive)
       .map((c) => ({ countryId: c.id, armies: c.activeArmies }));
 
+    const pendingBattle = this.pendingTacticalBattle;
+    this.pendingTacticalBattle = null;
+
     return {
       tick: this.tick,
       regionChanges,
@@ -346,6 +377,7 @@ export class SimulationEngine {
       winner,
       borderFronts: [...this.borderFronts],
       tradeRoutes: [...this.tradeRoutes],
+      pendingTacticalBattle: pendingBattle,
     };
   }
 
@@ -824,6 +856,116 @@ export class SimulationEngine {
     }
 
     return aliveCountries.length === 1 ? aliveCountries[0].id : null;
+  }
+
+  /**
+   * Apply the result of a tactical battle back to the strategic layer.
+   * Updates army sizes, removes border fronts, and handles captures/retreats.
+   */
+  applyTacticalResult(battleId: string, attackerWins: boolean, attackerSurvivalRate: number, defenderSurvivalRate: number): void {
+    const front = this.borderFronts.find((f) => f.id === battleId);
+    if (!front) return;
+
+    const attackerIdx = this.countries.findIndex((c) => c.id === front.attackerCountryId);
+    const defenderIdx = this.countries.findIndex((c) => c.id === front.defenderCountryId);
+    if (attackerIdx < 0 || defenderIdx < 0) return;
+
+    const attacker = this.countries[attackerIdx];
+    const defender = this.countries[defenderIdx];
+
+    // Apply losses to attacker army
+    const attackerArmy = attacker.activeArmies.find((a) => a.id === front.attackerArmyId);
+    if (attackerArmy) {
+      const newSize = Math.max(0, Math.round(attackerArmy.size * attackerSurvivalRate));
+      const losses = attackerArmy.size - newSize;
+      const newUnits = applyLossesToUnits(attackerArmy.units, attackerArmy.size, losses);
+      this.countries[attackerIdx] = {
+        ...this.countries[attackerIdx],
+        activeArmies: this.countries[attackerIdx].activeArmies.map((a) =>
+          a.id === front.attackerArmyId
+            ? { ...a, size: newSize, units: newUnits, borderFrontId: undefined }
+            : a,
+        ).filter((a) => a.size > 0),
+      };
+    }
+
+    // Apply losses to defender army
+    const defenderArmy = defender.activeArmies.find((a) => a.id === front.defenderArmyId);
+    if (defenderArmy) {
+      const newSize = Math.max(0, Math.round(defenderArmy.size * defenderSurvivalRate));
+      const losses = defenderArmy.size - newSize;
+      const newUnits = applyLossesToUnits(defenderArmy.units, defenderArmy.size, losses);
+      this.countries[defenderIdx] = {
+        ...this.countries[defenderIdx],
+        activeArmies: this.countries[defenderIdx].activeArmies.map((a) =>
+          a.id === front.defenderArmyId
+            ? { ...a, size: newSize, units: newUnits, borderFrontId: undefined }
+            : a,
+        ).filter((a) => a.size > 0),
+      };
+    }
+
+    // If attacker wins, capture the region
+    if (attackerWins) {
+      const regionIdx = this.regions.findIndex((r) => r.id === front.defenderRegionId);
+      if (regionIdx >= 0) {
+        this.regions[regionIdx] = {
+          ...this.regions[regionIdx],
+          countryId: front.attackerCountryId,
+          fortification: Math.max(0, this.regions[regionIdx].fortification - 1),
+        };
+      }
+
+      // Move attacker army into captured region
+      this.countries[attackerIdx] = {
+        ...this.countries[attackerIdx],
+        activeArmies: this.countries[attackerIdx].activeArmies.map((a) =>
+          a.id === front.attackerArmyId
+            ? updateMorale({ ...a, position: front.defenderRegionId }, true, attacker.warWeariness)
+            : a,
+        ),
+      };
+
+      // Defender retreats
+      const updatedDefender = this.countries[defenderIdx];
+      const finalDefArmy = updatedDefender.activeArmies.find((a) => a.id === front.defenderArmyId);
+      if (finalDefArmy && finalDefArmy.size > 0) {
+        const retreatRegions = this.regions.filter(
+          (r) => r.countryId === front.defenderCountryId && r.id !== front.defenderRegionId,
+        );
+        if (retreatRegions.length > 0) {
+          const retreatTo = retreatRegions[this.rng.int(0, retreatRegions.length - 1)];
+          this.countries[defenderIdx] = {
+            ...this.countries[defenderIdx],
+            activeArmies: this.countries[defenderIdx].activeArmies.map((a) =>
+              a.id === front.defenderArmyId
+                ? updateMorale({ ...a, position: retreatTo.id }, false, defender.warWeariness)
+                : a,
+            ),
+          };
+        }
+      }
+    } else {
+      // Defender wins — free attacker (retreat), free defender
+      const attackerCountry = this.countries[attackerIdx];
+      const retreatRegions = this.regions.filter(
+        (r) => r.countryId === front.attackerCountryId,
+      );
+      if (retreatRegions.length > 0) {
+        const retreatTo = retreatRegions[this.rng.int(0, retreatRegions.length - 1)];
+        this.countries[attackerIdx] = {
+          ...attackerCountry,
+          activeArmies: attackerCountry.activeArmies.map((a) =>
+            a.id === front.attackerArmyId
+              ? updateMorale({ ...a, position: retreatTo.id }, false, attackerCountry.warWeariness)
+              : a,
+          ),
+        };
+      }
+    }
+
+    // Remove the border front
+    this.borderFronts = this.borderFronts.filter((f) => f.id !== battleId);
   }
 
   getSnapshot(): SimulationSnapshot {

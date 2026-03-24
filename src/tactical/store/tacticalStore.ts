@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { TacticalUnit, TacticalMap, TacticalEvent, TacticalStatus, TacticalTerrain, TacticalUnitType } from '../types';
 import { TERRAIN_COVER, UNIT_DEFINITIONS, UNIT_AMMO, UNIT_SMOKE } from '../types';
+import type { Army } from '../../types';
 
 export type EditorTool = 'terrain' | 'unit' | 'erase';
 
@@ -14,6 +15,11 @@ interface TacticalStore {
   events: TacticalEvent[];
   selectedUnitIds: string[];
   playerFaction: 'attacker' | 'defender';
+
+  // Strategic bridge context (set when launched from strategic mode)
+  strategicBattleId: string | null;
+  strategicAttackerArmy: Army | null;
+  strategicDefenderArmy: Army | null;
 
   // Editor state
   editorMode: boolean;
@@ -60,6 +66,11 @@ export const useTacticalStore = create<TacticalStore>((set, get) => ({
   selectedUnitIds: [],
   playerFaction: 'attacker',
 
+  // Strategic bridge defaults
+  strategicBattleId: null,
+  strategicAttackerArmy: null,
+  strategicDefenderArmy: null,
+
   // Editor defaults
   editorMode: false,
   editorTool: 'terrain',
@@ -103,6 +114,9 @@ export const useTacticalStore = create<TacticalStore>((set, get) => ({
     events: [],
     selectedUnitIds: [],
     playerFaction: 'attacker',
+    strategicBattleId: null,
+    strategicAttackerArmy: null,
+    strategicDefenderArmy: null,
     editorMode: false,
   }),
 

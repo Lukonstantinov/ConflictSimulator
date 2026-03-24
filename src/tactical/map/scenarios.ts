@@ -262,7 +262,35 @@ export function loadScenario(scenario: TacticalScenario) {
   return { map, units: scenario.units };
 }
 
+export function getTutorialScenario(): TacticalScenario {
+  unitIdCounter = 0;
+
+  const units: TacticalUnit[] = [
+    // Player units (attacker) — small, easy-to-manage force
+    createUnit('infantry', 'attacker', 10, 35, 8),
+    createUnit('infantry', 'attacker', 15, 34, 8),
+    createUnit('tank', 'attacker', 12, 36),
+
+    // Enemy (defender) — weak force to ensure player wins
+    createUnit('infantry', 'defender', 20, 15, 4),
+    createUnit('infantry', 'defender', 25, 18, 4),
+  ];
+
+  return {
+    id: 'tutorial',
+    name: 'Tutorial: Basic Commands',
+    description: 'Learn the basics: select units, move, and attack. A small skirmish to practice controls.',
+    mapWidth: 40,
+    mapHeight: 40,
+    seed: 1,
+    mapPreset: 'village',
+    mapParams: { preset: 'village', buildingDensity: 0.3, treeDensity: 0.15 },
+    units,
+  };
+}
+
 export const TACTICAL_SCENARIOS = [
+  getTutorialScenario,
   getVillageAssaultScenario,
   getUrbanDefenseScenario,
   getForestAmbushScenario,
