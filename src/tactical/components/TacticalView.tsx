@@ -104,10 +104,14 @@ export default function TacticalView() {
   }, [setSpeed]);
 
   const handleFactionChange = useCallback((faction: 'attacker' | 'defender') => {
+    engineRef.current?.stop();
+    engineRef.current = null;
     loadCurrentScenario(faction);
   }, [loadCurrentScenario]);
 
   const handleScenarioChange = useCallback((idx: number) => {
+    engineRef.current?.stop();
+    engineRef.current = null;
     setScenarioIndex(idx);
     const state = useTacticalStore.getState();
     loadCurrentScenario(state.playerFaction, idx);
@@ -169,7 +173,7 @@ export default function TacticalView() {
 
       {/* Map + Editor Panel */}
       <div className="flex flex-1 min-h-0">
-        <div className="relative flex-1" style={{ minHeight: 500 }}>
+        <div className="relative flex-1" style={{ minHeight: 'min(500px, 60dvh)' }}>
           <TacticalCanvas
             onMoveCommand={handleMoveCommand}
             onAttackCommand={handleAttackCommand}

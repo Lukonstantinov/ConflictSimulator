@@ -70,7 +70,7 @@ export default function StatsOverlay() {
   const warWeariness = country.warWeariness ?? 0;
 
   return (
-    <div className="absolute top-4 right-4 bg-gray-800 bg-opacity-95 rounded-lg p-4 text-white text-xs w-56 z-50 shadow-lg border border-gray-600 max-h-[80vh] overflow-y-auto">
+    <div className="absolute top-2 right-2 md:top-4 md:right-4 bg-gray-800 bg-opacity-95 rounded-lg p-2 md:p-4 text-white text-xs w-44 md:w-56 z-50 shadow-lg border border-gray-600 max-h-[50dvh] md:max-h-[80vh] overflow-y-auto">
       <div className="flex items-center gap-2 mb-3 border-b border-gray-600 pb-2">
         <div
           className="w-4 h-4 rounded"

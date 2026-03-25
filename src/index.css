@@ -13,8 +13,11 @@ html, body, #root {
 
 @media (max-width: 767px) {
   html, body, #root {
+    height: auto;
+    min-height: 100dvh;
     overflow-y: auto;
     overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
   }
 }
 

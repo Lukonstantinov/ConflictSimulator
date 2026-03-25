@@ -30,7 +30,7 @@ export default function CountryPanel() {
   };
 
   return (
-    <div className="w-full md:w-72 bg-gray-800 text-white p-4 overflow-y-auto flex flex-col gap-3 md:h-[100dvh]">
+    <div className="w-full max-h-[40dvh] md:max-h-none md:w-72 bg-gray-800 text-white p-3 md:p-4 overflow-y-auto flex flex-col gap-3 md:h-[100dvh]">
       <h2 className="text-lg font-bold border-b border-gray-600 pb-2">Countries</h2>
 
       {/* Tool Mode Toggle */}

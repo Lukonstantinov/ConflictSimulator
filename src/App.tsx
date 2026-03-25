@@ -55,7 +55,12 @@ export default function App() {
   useEffect(() => {
     const updateSize = () => {
       const w = Math.min(window.innerWidth, 1200);
-      const h = Math.round(w * (2 / 3)); // 3:2 aspect ratio
+      // On mobile, cap map height to leave room for controls
+      const isMobile = window.innerWidth < 768;
+      const maxH = isMobile
+        ? Math.round(window.innerHeight * 0.55) // Leave room for toolbars + event log
+        : Math.round(w * (2 / 3)); // 3:2 aspect ratio on desktop
+      const h = Math.min(Math.round(w * (2 / 3)), maxH);
       setMapSize({ w, h });
     };
     updateSize();
@@ -91,8 +96,8 @@ export default function App() {
   if (gameMode === 'tactical') {
     return (
       <div className="flex flex-col min-h-[100dvh] bg-gray-900 text-white">
-        <div className="bg-gray-800 px-3 py-2 flex items-center gap-2 border-b border-gray-700">
-          <h1 className="font-bold text-sm mr-1">ConflictSimulator</h1>
+        <div className="bg-gray-800 px-2 py-1.5 md:px-3 md:py-2 flex items-center gap-2 border-b border-gray-700">
+          <h1 className="font-bold text-xs md:text-sm mr-1">ConflictSimulator</h1>
           <div className="flex gap-1">
             <button
               onClick={() => setGameMode('strategic')}
@@ -125,8 +130,8 @@ export default function App() {
       {/* Main Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Bar */}
-        <div className="bg-gray-800 px-3 py-2 flex flex-wrap items-center gap-2 border-b border-gray-700">
-          <h1 className="font-bold text-sm mr-1">ConflictSimulator</h1>
+        <div className="bg-gray-800 px-2 py-1.5 md:px-3 md:py-2 flex flex-wrap items-center gap-1.5 md:gap-2 border-b border-gray-700">
+          <h1 className="font-bold text-xs md:text-sm mr-1">ConflictSimulator</h1>
           <div className="flex gap-1">
             <button
               className="bg-blue-600 px-2 py-1 rounded text-xs"
@@ -141,15 +146,26 @@ export default function App() {
             </button>
           </div>
 
+          {/* Scenario Selector — visible on all devices */}
+          <ScenarioPanel mapSize={mapSize} onVictoryConfigChange={setVictoryConfig} />
+
+          <button
+            onClick={handleGenerate}
+            className="bg-blue-600 hover:bg-blue-500 px-2 py-1 rounded text-xs md:text-sm"
+          >
+            Generate
+          </button>
+
+          {/* Map gen inputs — hidden on small screens, shown on md+ */}
           <input
             type="number"
             value={seedInput}
             onChange={(e) => setSeedInput(e.target.value)}
-            placeholder="Seed (random)"
-            className="bg-gray-700 rounded px-2 py-1 text-sm w-28 outline-none focus:ring-1 focus:ring-blue-500"
+            placeholder="Seed"
+            className="hidden md:block bg-gray-700 rounded px-2 py-1 text-sm w-24 outline-none focus:ring-1 focus:ring-blue-500"
           />
 
-          <label className="text-xs text-gray-400 flex items-center gap-1">
+          <label className="hidden md:flex text-xs text-gray-400 items-center gap-1">
             Regions:
             <input
               type="number"
@@ -161,26 +177,16 @@ export default function App() {
             />
           </label>
 
-          <button
-            onClick={handleGenerate}
-            className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-sm"
-          >
-            Generate
-          </button>
-
-          {/* Scenario Selector */}
-          <ScenarioPanel mapSize={mapSize} onVictoryConfigChange={setVictoryConfig} />
-
           {map && (
             <>
               <button
                 onClick={() => saveCurrentMap()}
-                className="bg-green-700 hover:bg-green-600 px-3 py-1 rounded text-sm"
+                className="hidden md:block bg-green-700 hover:bg-green-600 px-3 py-1 rounded text-sm"
               >
                 Save
               </button>
 
-              <div className="relative">
+              <div className="relative hidden md:block">
                 <button
                   onClick={() => {
                     setShowLoadMenu(!showLoadMenu);
@@ -231,13 +237,13 @@ export default function App() {
             <>
               <button
                 onClick={handleExport}
-                className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm"
+                className="hidden md:block bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm"
               >
                 Export
               </button>
               <button
                 onClick={() => importInputRef.current?.click()}
-                className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm"
+                className="hidden md:block bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm"
               >
                 Import
               </button>
@@ -253,9 +259,9 @@ export default function App() {
 
           <button
             onClick={toggleCountryPanel}
-            className="md:ml-auto bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm"
+            className="md:ml-auto bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-xs md:text-sm"
           >
-            {showCountryPanel ? 'Hide Panel' : 'Show Panel'}
+            {showCountryPanel ? 'Hide' : 'Panel'}
           </button>
         </div>
 
