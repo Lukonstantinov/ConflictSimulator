@@ -82,7 +82,7 @@ export default function EventLog() {
       <div
         ref={scrollRef}
         className="overflow-y-auto p-2 space-y-1"
-        style={{ maxHeight: '300px' }}
+        style={{ maxHeight: 'min(300px, 25dvh)' }}
       >
         {recentEvents.length === 0 ? (
           <p className="text-xs text-gray-500 text-center py-4">Waiting for events...</p>

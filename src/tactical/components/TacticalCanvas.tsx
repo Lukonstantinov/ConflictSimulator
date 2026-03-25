@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { TacticalRenderer } from '../map/renderer';
 import { useTacticalStore } from '../store/tacticalStore';
+import type { TacticalMap } from '../types';
 
 interface Props {
   onMoveCommand: (unitIds: string[], target: { x: number; y: number }) => void;
@@ -29,23 +30,35 @@ export default function TacticalCanvas({ onMoveCommand, onAttackCommand }: Props
   // Track if mouse button is held for drag-painting
   const editorPainting = useRef(false);
 
-  // Initialize renderer
+  // Initialize renderer — use map reference identity (not just id) so switching
+  // scenarios with the same preset still re-creates the renderer.
+  const mapRef = useRef<TacticalMap | null>(null);
   useEffect(() => {
     if (!canvasRef.current || !map) return;
 
+    // Skip if same map object
+    if (mapRef.current === map && rendererRef.current) return;
+    mapRef.current = map;
+
     if (rendererRef.current) {
       rendererRef.current.destroy();
+      rendererRef.current = null;
     }
 
-    const renderer = new TacticalRenderer(canvasRef.current, map);
+    // Small delay to let the old WebGL context fully release before creating a new one
+    const canvas = canvasRef.current;
+    const renderer = new TacticalRenderer(canvas, map);
     rendererRef.current = renderer;
     lastProcessedEvent.current = 0;
 
     return () => {
       renderer.destroy();
-      rendererRef.current = null;
+      if (rendererRef.current === renderer) {
+        rendererRef.current = null;
+      }
+      mapRef.current = null;
     };
-  }, [map?.id]);
+  }, [map]);
 
   // Editor tile interaction (called by renderer tile click + drag)
   const handleEditorTileInteract = useCallback((x: number, y: number) => {

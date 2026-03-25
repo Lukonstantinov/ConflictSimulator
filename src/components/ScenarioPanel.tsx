@@ -95,13 +95,13 @@ export default function ScenarioPanel({ mapSize, onVictoryConfigChange }: Scenar
     <div className="relative">
       <button
         onClick={() => setShowScenarios(!showScenarios)}
-        className="bg-purple-700 hover:bg-purple-600 px-3 py-1 rounded text-sm"
+        className="bg-purple-700 hover:bg-purple-600 px-2 py-1 rounded text-xs md:text-sm"
       >
         Scenarios
       </button>
 
       {showScenarios && (
-        <div className="absolute top-8 left-0 bg-gray-800 rounded-lg shadow-xl z-50 w-80 border border-gray-600 max-h-96 overflow-y-auto">
+        <div className="absolute top-8 left-0 bg-gray-800 rounded-lg shadow-xl z-50 w-[min(20rem,90vw)] border border-gray-600 max-h-96 overflow-y-auto">
           <div className="p-3 border-b border-gray-700">
             <h3 className="text-sm font-bold text-purple-400">Choose a Scenario</h3>
           </div>

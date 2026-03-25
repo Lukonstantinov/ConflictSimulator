@@ -726,6 +726,7 @@ export class TacticalRenderer {
       sprite.destroy();
     }
     this.unitSprites.clear();
-    this.app.destroy(true);
+    // destroy(false) to NOT remove the canvas element — we reuse it across scenarios
+    this.app.destroy(false, { children: true, texture: true, baseTexture: true });
   }
 }
