@@ -207,7 +207,7 @@ export default function TacticalCanvas({ onMoveCommand, onAttackCommand }: Props
       <canvas
         ref={canvasRef}
         className="w-full h-full block"
-        style={{ touchAction: 'none', objectFit: 'contain', cursor: editorMode ? 'crosshair' : 'default' }}
+        style={{ touchAction: 'none', cursor: editorMode ? 'crosshair' : 'default' }}
       />
     </div>
   );

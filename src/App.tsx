@@ -95,8 +95,8 @@ export default function App() {
 
   if (gameMode === 'tactical') {
     return (
-      <div className="flex flex-col min-h-[100dvh] bg-gray-900 text-white">
-        <div className="bg-gray-800 px-2 py-1.5 md:px-3 md:py-2 flex items-center gap-2 border-b border-gray-700">
+      <div className="flex flex-col h-[100dvh] bg-gray-900 text-white overflow-hidden">
+        <div className="bg-gray-800 px-2 py-1.5 md:px-3 md:py-2 flex items-center gap-2 border-b border-gray-700 flex-shrink-0">
           <h1 className="font-bold text-xs md:text-sm mr-1">ConflictSimulator</h1>
           <div className="flex gap-1">
             <button
@@ -113,7 +113,9 @@ export default function App() {
           </div>
         </div>
         <Suspense fallback={<div className="flex-1 flex items-center justify-center text-gray-500">Loading tactical mode...</div>}>
-          <TacticalView />
+          <div className="flex-1 flex flex-col min-h-0">
+            <TacticalView />
+          </div>
         </Suspense>
       </div>
     );

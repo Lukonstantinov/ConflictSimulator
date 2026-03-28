@@ -1,16 +1,39 @@
 import * as PIXI from 'pixi.js';
-import type { TacticalMap, TacticalUnit, TacticalEvent } from '../types';
+import type { TacticalMap, TacticalTile, TacticalUnit, TacticalEvent } from '../types';
+import { SimplexNoise } from '../../map/terrain';
+import { SeededRNG } from '../../utils/random';
 
-// Terrain colors
-const TACTICAL_TERRAIN_COLORS: Record<string, number> = {
-  open: 0xd4c89a,
-  road: 0xb0a47a,
-  building: 0x8a8a8a,
-  rubble: 0x9a9080,
-  trees: 0x6a9a5a,
-  water: 0x5a8aaa,
-  trench: 0x7a7060,
+// HSL-based terrain palette for noise modulation (satellite/topographic style)
+const TERRAIN_HSL: Record<string, { h: number; s: number; l: number }> = {
+  open:     { h: 85,  s: 35, l: 52 },
+  road:     { h: 35,  s: 20, l: 42 },
+  building: { h: 220, s: 8,  l: 50 },
+  rubble:   { h: 30,  s: 15, l: 45 },
+  trees:    { h: 120, s: 40, l: 32 },
+  water:    { h: 210, s: 55, l: 40 },
+  trench:   { h: 35,  s: 25, l: 35 },
 };
+
+/** Fast HSL (degrees, percent, percent) to 0xRRGGBB */
+function hslNum(h: number, s: number, l: number): number {
+  s = Math.max(0, Math.min(100, s)) / 100;
+  l = Math.max(0, Math.min(100, l)) / 100;
+  const hh = ((h % 360) + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((hh / 60) % 2 - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (hh < 60)       { r = c; g = x; }
+  else if (hh < 120) { r = x; g = c; }
+  else if (hh < 180) { g = c; b = x; }
+  else if (hh < 240) { g = x; b = c; }
+  else if (hh < 300) { r = x; b = c; }
+  else               { r = c; b = x; }
+  const ri = Math.round((r + m) * 255);
+  const gi = Math.round((g + m) * 255);
+  const bi = Math.round((b + m) * 255);
+  return (ri << 16) | (gi << 8) | bi;
+}
 
 const FACTION_COLORS = {
   attacker: 0x4488ff,
@@ -37,6 +60,17 @@ export class TacticalRenderer {
   private panY = 0;
   private isDragging = false;
   private lastPointer = { x: 0, y: 0 };
+  private hasUserZoomed = false;
+
+  // Resize
+  private containerEl: HTMLElement | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+
+  // Terrain noise + caching
+  private noise: SimplexNoise;
+  private lastDrawnMap: TacticalMap | null = null;
+  private terrainSprite: PIXI.Sprite | null = null;
+  private terrainTexture: PIXI.RenderTexture | null = null;
 
   // Callbacks
   private onTileClick: ((x: number, y: number, button: number, shift: boolean) => void) | null = null;
@@ -51,14 +85,21 @@ export class TacticalRenderer {
     this.mapWidth = map.width;
     this.mapHeight = map.height;
 
-    const pixelW = map.width * map.tileSize;
-    const pixelH = map.height * map.tileSize;
+    // Noise for terrain variation
+    let seed = 42;
+    for (let i = 0; i < map.id.length; i++) seed = seed * 31 + map.id.charCodeAt(i);
+    this.noise = new SimplexNoise(new SeededRNG(seed));
+
+    // Start with container size (or fallback to reasonable default)
+    this.containerEl = canvas.parentElement;
+    const initW = this.containerEl?.clientWidth || 800;
+    const initH = this.containerEl?.clientHeight || 600;
 
     this.app = new PIXI.Application({
       view: canvas,
-      width: pixelW,
-      height: pixelH,
-      backgroundColor: 0x2a2a2a,
+      width: initW,
+      height: initH,
+      backgroundColor: 0x1a2a1a,
       antialias: true,
       resolution: Math.min(window.devicePixelRatio, 2),
       autoDensity: true,
@@ -100,6 +141,30 @@ export class TacticalRenderer {
     this.setupCameraControls(canvas);
     this.setupClickHandlers(canvas);
     this.drawMap(map);
+
+    // Auto-fit map into viewport
+    this.resizeToContainer();
+
+    // Watch for container size changes (orientation, window resize)
+    this.resizeObserver = new ResizeObserver(() => this.resizeToContainer());
+    if (this.containerEl) this.resizeObserver.observe(this.containerEl);
+  }
+
+  private resizeToContainer(): void {
+    if (!this.containerEl) return;
+    const { clientWidth: w, clientHeight: h } = this.containerEl;
+    if (w === 0 || h === 0) return;
+
+    this.app.renderer.resize(w, h);
+
+    if (!this.hasUserZoomed) {
+      const mapPxW = this.mapWidth * this.tileSize;
+      const mapPxH = this.mapHeight * this.tileSize;
+      this.zoom = Math.min(w / mapPxW, h / mapPxH);
+      this.panX = (w - mapPxW * this.zoom) / 2;
+      this.panY = (h - mapPxH * this.zoom) / 2;
+      this.applyCamera();
+    }
   }
 
   setOnTileClick(handler: (x: number, y: number, button: number, shift: boolean) => void): void {
@@ -121,34 +186,178 @@ export class TacticalRenderer {
   }
 
   drawMap(map: TacticalMap): void {
-    this.gridLayer.clear();
+    // Skip terrain redraw if map hasn't changed (cached as RenderTexture)
+    if (map === this.lastDrawnMap && this.terrainSprite) {
+      // Only redraw buildings (they can take damage)
+      this.drawBuildings(map);
+      return;
+    }
+    this.lastDrawnMap = map;
 
-    // Draw tiles
+    // Draw terrain to a temporary Graphics, then cache as texture
+    const gfx = new PIXI.Graphics();
+    const ts = this.tileSize;
+
     for (let y = 0; y < map.height; y++) {
       for (let x = 0; x < map.width; x++) {
         const tile = map.tiles[y][x];
-        const color = TACTICAL_TERRAIN_COLORS[tile.terrain] ?? 0xd4c89a;
-        const px = x * this.tileSize;
-        const py = y * this.tileSize;
+        const px = x * ts;
+        const py = y * ts;
 
-        this.gridLayer.beginFill(color);
-        this.gridLayer.drawRect(px, py, this.tileSize, this.tileSize);
-        this.gridLayer.endFill();
+        // Noise-varied base color
+        const base = TERRAIN_HSL[tile.terrain] ?? TERRAIN_HSL.open;
+        const n = this.noise.noise2D(x * 0.15, y * 0.15);
+        const color = hslNum(base.h, base.s + n * 5, base.l + n * 8);
+
+        gfx.beginFill(color);
+        gfx.drawRect(px, py, ts, ts);
+        gfx.endFill();
+
+        // Elevation shading
+        if (tile.elevation > 1) {
+          gfx.beginFill(0xffffff, (tile.elevation - 1) * 0.04);
+          gfx.drawRect(px, py, ts, ts);
+          gfx.endFill();
+        } else if (tile.elevation < 1 && tile.terrain !== 'water') {
+          gfx.beginFill(0x000000, 0.03);
+          gfx.drawRect(px, py, ts, ts);
+          gfx.endFill();
+        }
+
+        // Terrain-specific detail patterns
+        this.drawTerrainDetail(gfx, tile, px, py);
       }
     }
 
-    // Draw grid lines
-    this.gridLayer.lineStyle(1, 0x000000, 0.08);
+    // Grid lines (very subtle)
+    gfx.lineStyle(1, 0x000000, 0.05);
     for (let x = 0; x <= map.width; x++) {
-      this.gridLayer.moveTo(x * this.tileSize, 0);
-      this.gridLayer.lineTo(x * this.tileSize, map.height * this.tileSize);
+      gfx.moveTo(x * ts, 0);
+      gfx.lineTo(x * ts, map.height * ts);
     }
     for (let y = 0; y <= map.height; y++) {
-      this.gridLayer.moveTo(0, y * this.tileSize);
-      this.gridLayer.lineTo(map.width * this.tileSize, y * this.tileSize);
+      gfx.moveTo(0, y * ts);
+      gfx.lineTo(map.width * ts, y * ts);
     }
 
-    // Draw building outlines (only non-destroyed)
+    // Contour lines between different elevations
+    gfx.lineStyle(0.8, 0x000000, 0.12);
+    for (let y = 0; y < map.height; y++) {
+      for (let x = 0; x < map.width; x++) {
+        const elev = map.tiles[y][x].elevation;
+        if (x < map.width - 1 && map.tiles[y][x + 1].elevation !== elev) {
+          gfx.moveTo((x + 1) * ts, y * ts);
+          gfx.lineTo((x + 1) * ts, (y + 1) * ts);
+        }
+        if (y < map.height - 1 && map.tiles[y + 1][x].elevation !== elev) {
+          gfx.moveTo(x * ts, (y + 1) * ts);
+          gfx.lineTo((x + 1) * ts, (y + 1) * ts);
+        }
+      }
+    }
+
+    // Render to cached texture
+    const pxW = map.width * ts;
+    const pxH = map.height * ts;
+    if (this.terrainTexture) this.terrainTexture.destroy(true);
+    this.terrainTexture = PIXI.RenderTexture.create({ width: pxW, height: pxH });
+    this.app.renderer.render(gfx, { renderTexture: this.terrainTexture });
+    gfx.destroy();
+
+    // Replace old sprite
+    if (this.terrainSprite) {
+      this.worldContainer.removeChild(this.terrainSprite);
+      this.terrainSprite.destroy();
+    }
+    this.terrainSprite = new PIXI.Sprite(this.terrainTexture);
+    this.terrainSprite.zIndex = -1;
+    this.worldContainer.addChild(this.terrainSprite);
+
+    // Hide old gridLayer (we use the sprite now)
+    this.gridLayer.clear();
+
+    // Draw buildings on top
+    this.drawBuildings(map);
+  }
+
+  private drawTerrainDetail(gfx: PIXI.Graphics, tile: TacticalTile, px: number, py: number): void {
+    const ts = this.tileSize;
+    const cx = px + ts / 2;
+    const cy = py + ts / 2;
+
+    switch (tile.terrain) {
+      case 'trees': {
+        const count = 2 + Math.floor(Math.abs(this.noise.noise2D(tile.x * 3, tile.y * 3)) * 3);
+        for (let i = 0; i < count; i++) {
+          const ox = this.noise.noise2D(tile.x * 5 + i, tile.y * 5) * ts * 0.32;
+          const oy = this.noise.noise2D(tile.x * 5, tile.y * 5 + i) * ts * 0.32;
+          const r = 3 + Math.abs(this.noise.noise2D(tile.x + i * 10, tile.y)) * 3;
+          gfx.beginFill(hslNum(110 + i * 8, 45, 22 + i * 4), 0.7);
+          gfx.drawCircle(cx + ox, cy + oy, r);
+          gfx.endFill();
+        }
+        break;
+      }
+      case 'water': {
+        gfx.lineStyle(0.5, 0xffffff, 0.12);
+        for (let i = 0; i < 3; i++) {
+          const yOff = py + ts * 0.2 + i * ts * 0.28;
+          gfx.moveTo(px + 2, yOff);
+          gfx.quadraticCurveTo(
+            cx, yOff + this.noise.noise2D(tile.x + i, tile.y) * 3,
+            px + ts - 2, yOff,
+          );
+        }
+        break;
+      }
+      case 'road': {
+        gfx.lineStyle(1, 0xcccc99, 0.25);
+        const horiz = Math.abs(this.noise.noise2D(tile.x * 0.5, tile.y * 0.5)) > 0.3;
+        if (horiz) {
+          for (let d = 0; d < ts; d += 6) {
+            gfx.moveTo(px + d, cy);
+            gfx.lineTo(px + Math.min(d + 3, ts), cy);
+          }
+        } else {
+          for (let d = 0; d < ts; d += 6) {
+            gfx.moveTo(cx, py + d);
+            gfx.lineTo(cx, py + Math.min(d + 3, ts));
+          }
+        }
+        break;
+      }
+      case 'trench': {
+        gfx.lineStyle(0.7, 0x000000, 0.18);
+        for (let d = -ts; d < ts * 2; d += 5) {
+          gfx.moveTo(Math.max(px, px + d), py);
+          gfx.lineTo(Math.min(px + ts, px + d + ts * 0.3), py + ts);
+        }
+        break;
+      }
+      case 'rubble': {
+        for (let i = 0; i < 5; i++) {
+          const ox = this.noise.noise2D(tile.x * 7 + i, tile.y * 7) * ts * 0.35;
+          const oy = this.noise.noise2D(tile.x * 7, tile.y * 7 + i) * ts * 0.35;
+          gfx.beginFill(0x666666, 0.35);
+          gfx.drawRect(cx + ox - 1, cy + oy - 1, 2 + Math.abs(ox) * 0.3, 2);
+          gfx.endFill();
+        }
+        break;
+      }
+      case 'open': {
+        gfx.lineStyle(0.5, 0x5a8a3a, 0.1);
+        for (let i = 0; i < 3; i++) {
+          const ox = this.noise.noise2D(tile.x * 4 + i, tile.y * 4) * ts * 0.3;
+          const oy = this.noise.noise2D(tile.x * 4, tile.y * 4 + i) * ts * 0.3;
+          gfx.moveTo(cx + ox, cy + oy);
+          gfx.lineTo(cx + ox + 2, cy + oy - 4);
+        }
+        break;
+      }
+    }
+  }
+
+  private drawBuildings(map: TacticalMap): void {
     this.buildingLayer.clear();
     for (const building of map.buildings) {
       if (building.tiles.length === 0 || building.destroyed) continue;
@@ -163,9 +372,8 @@ export class TacticalRenderer {
       const pw = (maxX - minX + 1) * this.tileSize;
       const ph = (maxY - minY + 1) * this.tileSize;
 
-      // Show damage via color
       const healthPct = building.health / 100;
-      const alpha = 0.1 + (1 - healthPct) * 0.3;
+      const alpha = 0.15 + (1 - healthPct) * 0.3;
       const borderColor = healthPct > 0.5 ? 0x555555 : 0x884444;
 
       this.buildingLayer.lineStyle(2, borderColor, 0.8);
@@ -611,6 +819,7 @@ export class TacticalRenderer {
     // Mouse wheel zoom
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
+      this.hasUserZoomed = true;
       const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
       const newZoom = Math.max(0.5, Math.min(4, this.zoom * zoomFactor));
 
@@ -676,6 +885,7 @@ export class TacticalRenderer {
         // Pinch zoom
         const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
         if (lastTouchDist > 0) {
+          this.hasUserZoomed = true;
           const scale = newDist / lastTouchDist;
           const rect = canvas.getBoundingClientRect();
           const cx = (t1.clientX + t2.clientX) / 2 - rect.left;
@@ -718,6 +928,10 @@ export class TacticalRenderer {
   }
 
   destroy(): void {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.containerEl = null;
+
     for (const line of this.shotLines) {
       line.destroy();
     }
@@ -726,6 +940,11 @@ export class TacticalRenderer {
       sprite.destroy();
     }
     this.unitSprites.clear();
+
+    if (this.terrainTexture) { this.terrainTexture.destroy(true); this.terrainTexture = null; }
+    if (this.terrainSprite) { this.terrainSprite.destroy(); this.terrainSprite = null; }
+    this.lastDrawnMap = null;
+
     // destroy(false) to NOT remove the canvas element — we reuse it across scenarios
     this.app.destroy(false, { children: true, texture: true, baseTexture: true });
   }

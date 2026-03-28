@@ -4,7 +4,7 @@ import { SeededRNG } from '../utils/random';
 /**
  * Simple 2D Perlin-like noise using value noise with interpolation.
  */
-class SimplexNoise {
+export class SimplexNoise {
   private perm: number[];
 
   constructor(rng: SeededRNG) {
