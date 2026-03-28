@@ -69,8 +69,6 @@ export class TacticalRenderer {
   // Terrain noise + caching
   private noise: SimplexNoise;
   private lastDrawnMap: TacticalMap | null = null;
-  private terrainSprite: PIXI.Sprite | null = null;
-  private terrainTexture: PIXI.RenderTexture | null = null;
 
   // Callbacks
   private onTileClick: ((x: number, y: number, button: number, shift: boolean) => void) | null = null;
@@ -186,16 +184,15 @@ export class TacticalRenderer {
   }
 
   drawMap(map: TacticalMap): void {
-    // Skip terrain redraw if map hasn't changed (cached as RenderTexture)
-    if (map === this.lastDrawnMap && this.terrainSprite) {
-      // Only redraw buildings (they can take damage)
+    // Skip full terrain redraw if same map object (only buildings change during play)
+    if (map === this.lastDrawnMap) {
       this.drawBuildings(map);
       return;
     }
     this.lastDrawnMap = map;
 
-    // Draw terrain to a temporary Graphics, then cache as texture
-    const gfx = new PIXI.Graphics();
+    // Draw terrain directly on gridLayer
+    this.gridLayer.clear();
     const ts = this.tileSize;
 
     for (let y = 0; y < map.height; y++) {
@@ -209,72 +206,52 @@ export class TacticalRenderer {
         const n = this.noise.noise2D(x * 0.15, y * 0.15);
         const color = hslNum(base.h, base.s + n * 5, base.l + n * 8);
 
-        gfx.beginFill(color);
-        gfx.drawRect(px, py, ts, ts);
-        gfx.endFill();
+        this.gridLayer.beginFill(color);
+        this.gridLayer.drawRect(px, py, ts, ts);
+        this.gridLayer.endFill();
 
         // Elevation shading
         if (tile.elevation > 1) {
-          gfx.beginFill(0xffffff, (tile.elevation - 1) * 0.04);
-          gfx.drawRect(px, py, ts, ts);
-          gfx.endFill();
+          this.gridLayer.beginFill(0xffffff, (tile.elevation - 1) * 0.04);
+          this.gridLayer.drawRect(px, py, ts, ts);
+          this.gridLayer.endFill();
         } else if (tile.elevation < 1 && tile.terrain !== 'water') {
-          gfx.beginFill(0x000000, 0.03);
-          gfx.drawRect(px, py, ts, ts);
-          gfx.endFill();
+          this.gridLayer.beginFill(0x000000, 0.03);
+          this.gridLayer.drawRect(px, py, ts, ts);
+          this.gridLayer.endFill();
         }
 
-        // Terrain-specific detail patterns
-        this.drawTerrainDetail(gfx, tile, px, py);
+        // Terrain detail patterns
+        this.drawTerrainDetail(this.gridLayer, tile, px, py);
       }
     }
 
     // Grid lines (very subtle)
-    gfx.lineStyle(1, 0x000000, 0.05);
+    this.gridLayer.lineStyle(1, 0x000000, 0.05);
     for (let x = 0; x <= map.width; x++) {
-      gfx.moveTo(x * ts, 0);
-      gfx.lineTo(x * ts, map.height * ts);
+      this.gridLayer.moveTo(x * ts, 0);
+      this.gridLayer.lineTo(x * ts, map.height * ts);
     }
     for (let y = 0; y <= map.height; y++) {
-      gfx.moveTo(0, y * ts);
-      gfx.lineTo(map.width * ts, y * ts);
+      this.gridLayer.moveTo(0, y * ts);
+      this.gridLayer.lineTo(map.width * ts, y * ts);
     }
 
     // Contour lines between different elevations
-    gfx.lineStyle(0.8, 0x000000, 0.12);
+    this.gridLayer.lineStyle(0.8, 0x000000, 0.12);
     for (let y = 0; y < map.height; y++) {
       for (let x = 0; x < map.width; x++) {
         const elev = map.tiles[y][x].elevation;
         if (x < map.width - 1 && map.tiles[y][x + 1].elevation !== elev) {
-          gfx.moveTo((x + 1) * ts, y * ts);
-          gfx.lineTo((x + 1) * ts, (y + 1) * ts);
+          this.gridLayer.moveTo((x + 1) * ts, y * ts);
+          this.gridLayer.lineTo((x + 1) * ts, (y + 1) * ts);
         }
         if (y < map.height - 1 && map.tiles[y + 1][x].elevation !== elev) {
-          gfx.moveTo(x * ts, (y + 1) * ts);
-          gfx.lineTo((x + 1) * ts, (y + 1) * ts);
+          this.gridLayer.moveTo(x * ts, (y + 1) * ts);
+          this.gridLayer.lineTo((x + 1) * ts, (y + 1) * ts);
         }
       }
     }
-
-    // Render to cached texture
-    const pxW = map.width * ts;
-    const pxH = map.height * ts;
-    if (this.terrainTexture) this.terrainTexture.destroy(true);
-    this.terrainTexture = PIXI.RenderTexture.create({ width: pxW, height: pxH });
-    this.app.renderer.render(gfx, { renderTexture: this.terrainTexture });
-    gfx.destroy();
-
-    // Replace old sprite
-    if (this.terrainSprite) {
-      this.worldContainer.removeChild(this.terrainSprite);
-      this.terrainSprite.destroy();
-    }
-    this.terrainSprite = new PIXI.Sprite(this.terrainTexture);
-    this.terrainSprite.zIndex = -1;
-    this.worldContainer.addChild(this.terrainSprite);
-
-    // Hide old gridLayer (we use the sprite now)
-    this.gridLayer.clear();
 
     // Draw buildings on top
     this.drawBuildings(map);
@@ -931,6 +908,7 @@ export class TacticalRenderer {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.containerEl = null;
+    this.lastDrawnMap = null;
 
     for (const line of this.shotLines) {
       line.destroy();
@@ -941,11 +919,11 @@ export class TacticalRenderer {
     }
     this.unitSprites.clear();
 
-    if (this.terrainTexture) { this.terrainTexture.destroy(true); this.terrainTexture = null; }
-    if (this.terrainSprite) { this.terrainSprite.destroy(); this.terrainSprite = null; }
-    this.lastDrawnMap = null;
-
-    // destroy(false) to NOT remove the canvas element — we reuse it across scenarios
-    this.app.destroy(false, { children: true, texture: true, baseTexture: true });
+    try {
+      // destroy(false) = don't remove the canvas element (we reuse it across scenarios)
+      this.app.destroy(false);
+    } catch {
+      // PixiJS may throw if context is already lost
+    }
   }
 }
