@@ -156,7 +156,7 @@ export default function TacticalView() {
       />
 
       {/* Controls bar */}
-      <div className="bg-gray-800 px-3 py-2 border-b border-gray-700">
+      <div className="bg-gray-800 px-2 py-1.5 md:px-3 md:py-2 border-b border-gray-700 flex-shrink-0">
         <TacticalControls
           onStart={handleStart}
           onPause={handlePause}
@@ -173,7 +173,7 @@ export default function TacticalView() {
 
       {/* Map + Editor Panel */}
       <div className="flex flex-1 min-h-0">
-        <div className="relative flex-1" style={{ minHeight: 'min(500px, 60dvh)' }}>
+        <div className="relative flex-1 min-h-0">
           <TacticalCanvas
             onMoveCommand={handleMoveCommand}
             onAttackCommand={handleAttackCommand}
